@@ -92,7 +92,7 @@ Compile Flags for freetype
 Build Compile Command
 ---------------------
 	Based on output from previous two sections I ended up with the following command:
-		gcc -o dnet.exe dnet.c -Wall -I/usr/include/SDL2 -Dmain=SDL_main -I/usr/local/include/freetype2 -I/usr/local/include -L/usr/lib -L/usr/local/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -lfreetype -lSDL2_ttf -Wl,-Bstatic -static-libgcc
+		gcc -o ../build/dnet.exe dnet.c -Wall -D _WIN -I/usr/include/SDL2 -Dmain=SDL_main -I/usr/local/include/freetype2 -I/usr/local/include -L/usr/lib -L/usr/local/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -lfreetype -lSDL2_ttf -lws2_32 -Wl,-Bstatic -static-libgcc
 	-Wl,-Bstatic is intended to include dll dependencies in the .exe file
 		I haven't figured out how to get this to work for SDL2.dll, SDL2_ttf.dll, and libfreetype-6.dll yet, but in theory it should work.
 	-static-libgcc includes the libgcc_s_dw2-1.dll dependency in the dnet.exe file

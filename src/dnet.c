@@ -1,6 +1,6 @@
-/*                             c net.c
+/*                             dnet.c
                             desknet-0.1
-                   Copyright (C) 2014 by John Slayton
+          Copyright (C) 2015 by John Slayton and David Slayton
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -18,25 +18,25 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 Author's address as of 11.3.14 is 260 Sundance Ct, Azusa, CA 91792. */
 
-#include <errno.h>
+#ifdef _WIN /* Windows */
+  #define _WIN32_IE 0x0600
+  
+  #include <shlobj.h>
+  #include <sys/time.h>
+  #include <winsock2.h>
+#else /* Linux */
+  #include <linux/input.h>
+  #include <sys/ioctl.h>
+  #include <time.h>
+#endif /* _WIN */
+
 #include <fcntl.h>
-//#include <linux/input.h>
-//#include <linux/ioctl.h>
-#include <math.h>
-#include <string.h>
-#include <strings.h>
-#include <sys/types.h>
-//#include <sys/io.h>
-//#include <sys/ioctl.h>
-//#include <sys/select.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <unistd.h>
+
+#include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
-#include <shlobj.h>
 
  /*                      INTEGER VARIABLES                            */
 
@@ -73,23 +73,24 @@ int hundredsregister = 0;
 int k = 0;
 
  /* linelength stores number of characters in a printed line (hard copy). */
-int lengthflag = 0;
+int length_flag = 0;
+
+int letra[41];
 
 int letter = 0;
-int letra[41];
 
  /* ltr is an ASCII character returned from get_event() */
 int ltr = 0;
 
 int m = 0;
 
-int messagenumber = 0;
+int message_number = 0;
 
  /* net_size holds the number of keyboards in the hardware system. */
 int net_size = 40;
 
  /* used to convert binary to bcd */
-int onesregister = 0;
+int ones_register = 0;
 
  /* Used to select answer file */
 int option = 0;
@@ -107,7 +108,7 @@ int pntr = 0;
 int repeat = 0;
 
  /* used to convert binary to bcd */
-int tensregister = 0;
+int tens_register = 0;
 
  /* win_score contains the score needed to win math competitions.  It 
     can  be changed by the teacher when the program is running. */
@@ -132,7 +133,7 @@ int advance[41];
 int answer[41];
 
  /* This flag keeps a keyboard from being read while a message is displayed. */
-int blockinput[41];
+int block_input[41];
 
  /* These are used to calculate math division problems. */
 int dividend[41];
@@ -240,8 +241,7 @@ int upper_case[41];
 int waiting[41];
 
                            /* CHARACTER ARRAYS */
-char ttf_path[16] = "C:\\Windows\\Fonts";
-						   
+
 char answ[41][39];
 
 char blankline[41] = "                     ";
@@ -254,7 +254,7 @@ char Buf[50];
 
  /* These are the buffers for student compositions, limited for now to 
      5000 characters. */
-char comp[41][5000];
+char comp[41][5001];
 
  /* Here's an empty buffer used to clear other buffers by strcpy. */
 char dum[41] = "";
@@ -277,7 +277,7 @@ char key[40000];
     by reprinting it in background color. */
 char last_line[41][21];
 
-char displayline[41][21];
+char display_line[41][21];
 
  /* Contains students' proposed answers for Check Your Math. */
 char guess[41][21];
@@ -294,7 +294,7 @@ char password[5] = "1040";
 char pass[5];
   /* This is a buffer containing a student composition being formatted 
      for hard copy printing. */
-char proof[5000] = "";
+char proof[5001] = "";
 
  /* This is a long term array containing names of all current students.
     (10 character limit) */
@@ -531,6 +531,13 @@ char ttext[201][21]=
      " What's the problem?"  // 195
       };
 
+/* Path to the Vera Mono font. */
+#ifdef _WIN /* Windows */
+  char ttf_vera_mono_path[] = "C:\\Windows\\Fonts\\VeraMono.ttf\0";
+#else /* Linux */
+  char ttf_vera_mono_path[] = "/usr/local/etc/fonts/ttf-bitstream-vera-1.10/VeraMono.ttf\0";
+#endif /* _WIN */
+
  /* This array holds ASCII representation of the number of each 
     student's practice typing line.  Used in i/o operations.
     (Corresponding binary representations are held in tline[]. */
@@ -572,7 +579,8 @@ int bail();
     keyboards. */
 int board();
 
- /* Add, delete students from class. */
+ /* This does keyboard polling for Check Your Math. */
+int check();
 
  /* Erase all previously displayed lines. */
 int clearall();
@@ -588,11 +596,6 @@ int double_check();
 
  /* Empty event que. */
 int dump();
-
- /* This routine creates a class identifier at top of main menu.  It may 
-    be the teacher's name.  The routine also allows the teacher to 
-    change the password.  It is invoked by hidden menu item X. */
-int name_class();
 
  /* Check student typing for speed and accuracy. */
 int eval_type();
@@ -625,13 +628,16 @@ int get_file();
  /* Download the class roster. */
 int get_names();
 
-int get_ten();
+int get_nine();
 
  /* Set the number of points a particular student will get for a right 
     answer in one of the math contests. */
 int handicap();
 
+ /* Specify which board will receive the handicap points. */
 int handicapenterpage();
+
+ /* Specify which operation the handicap will apply to. */
 int handicapoppage();
 
  /* The following routines create and display pseudo-random problems 
@@ -641,20 +647,21 @@ int make_div_prob();
 int make_mul_prob();
 int make_sub_prob();
 
-int subtract();
-int multiply();
 
  /* This presents the basic menu. */
 int menu();
 
  /* This prints a numbered message to the screen. */
-int message(int e, int messagenumber);
+int message(int e, int message_number);
+
+int multiply();
+
+ /* This routine creates a class identifier at top of main menu.  It may 
+    be the teacher's name. */
+int name_class();
 
  /* This opens a file for each keyboard, assigns control using ioc. */
 int opener();
-
- /* This does keyboard polling for Check Your Math. */
-int check();
 
  /* Print a practice line for the typing tutorial. */
 int print_line();
@@ -686,6 +693,8 @@ int set_win_score();
 
 int splash_page();
 
+int subtract();
+
  /* Create a space at any point in student composition by moving all 
     following text one space to the right.  Do not replace original 
     character at division point; result is to duplicate it one space to 
@@ -696,26 +705,14 @@ int win_page();
 
  /* Here are the screens */
 
-SDL_Window* choices = NULL;
-SDL_Surface* options = NULL;
-
-SDL_Window* slate = NULL;
 SDL_Surface* chalk = NULL;
-SDL_Surface* ostraca = NULL;  
-SDL_Surface* lin1 = NULL;
-SDL_Surface* lettr = NULL;
-SDL_Surface* hogwash = NULL;
-SDL_Surface* correction = NULL;
-SDL_Surface* scratchpad = NULL;
-SDL_Surface* sym = NULL;
-SDL_Surface* sym1 = NULL;
-SDL_Surface* sym2 = NULL;
-SDL_Surface* scratch5 = NULL;
-SDL_Surface* scratch7 = NULL;
+SDL_Surface* display = NULL;
+SDL_Surface* options = NULL;
+SDL_Surface* scratch = NULL;
 
-SDL_Surface* changeslate = NULL;
-SDL_Surface* classslate = NULL;
-SDL_Surface* winslate = NULL;
+SDL_Window* changeslate = NULL;
+SDL_Window* choices = NULL;
+SDL_Window* slate = NULL;
 
 SDL_Color black = {0,0,0};
 SDL_Color green = {7,167,8};
@@ -736,13 +733,13 @@ add()
 {
   char a;
   int b = 0;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
 
                     /* OPEN EMPTY WHITE WINDOW */
 
   slate = SDL_CreateWindow("add",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -766,9 +763,9 @@ add()
       last_line[e][7] = '=';
       for (c = 0; c < 20; c++)
         {
-          if(net_size==40)ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-          else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-          SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+          if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+          else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
         }
       
       placeflag[e] = 1;
@@ -777,21 +774,20 @@ add()
   SDL_UpdateWindowSurface(slate);
 
                          /* START KEYBOARD POLLING */
-     
   while (1)
     {
       if (get_char() == 10) /* CHECK TEACHER'S KEYBOARD FOR RETURN TO MENU */
-         {
-           last_line[e][15] = ' ';
-           last_line[e][16] = ' ';
-           last_line[e][1] = ' ';
-           last_line[e][3] = ' ';
-           last_line[e][5] = ' ';
-           goaround = 0;
-           SDL_DestroyWindow(slate);
-           return 0;
-         }
-      
+        {
+          last_line[e][15] = ' ';
+          last_line[e][16] = ' ';
+          last_line[e][1] = ' ';
+          last_line[e][3] = ' ';
+          last_line[e][5] = ' ';
+          goaround = 0;
+          SDL_DestroyWindow(slate);
+          return 0;
+        }
+
       for (e = 0; e < net_size; e++)
         { 
           if (goofed[e] == 1)
@@ -799,11 +795,11 @@ add()
               if (time(t) - clk[e] > 3) /* END OR CONTINUE TIMEOUT PENALTY. */
                 {
                   goofed[e] = 0;
-                  if(net_size==40) lin1 = TTF_RenderText_Solid(fntVeraMono33, "X", white);
-                  else lin1 = TTF_RenderText_Solid(fntVeraMono40, "X", white);
-                  SDL_BlitSurface(lin1, NULL, chalk, &tilem[e][10]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, "X", white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, "X", white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][10]);
              
-                  SDL_BlitSurface(lin1, NULL, chalk, &tilem[e][11]);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
             
                   SDL_UpdateWindowSurface(slate);
                 }
@@ -832,9 +828,9 @@ add()
                    last_line[e][10] = (int) a;
                    placeflag[e] = 2;
                                 
-                   if(net_size==40) lettr = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
-                   else lettr = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-                   SDL_BlitSurface(lettr, NULL, chalk, &tilem[e][10]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][10]);
                    SDL_UpdateWindowSurface(slate);
                    
                    continue;
@@ -848,9 +844,9 @@ add()
                    last_line[e][11] = (int) a;
                    stuans[e] = 10 * stuans[e] + (a - 48);
                       
-                   if(net_size==40) lettr = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
-                   else lettr = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-                   SDL_BlitSurface(lettr, NULL, chalk, &tilem[e][11]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                    SDL_UpdateWindowSurface(slate);
 
                    stop[e] = 1;                     
@@ -865,19 +861,19 @@ add()
             { 
                for (c = 0; c < 20; c++)
                   {
-                    if(net_size==40) hogwash = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
-                    else hogwash = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
-                    SDL_BlitSurface(hogwash, NULL, chalk, &tilem[e][c]);
+                    if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
+                    else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
+                    SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                   }
                SDL_UpdateWindowSurface(slate);
 
                advance[e] = 1;
                score[e] = score[e] + addpoints[e + 1];
-               onesregister = score[e] % 10;
-               tensregister = score[e] / 10;
+               ones_register = score[e] % 10;
+               tens_register = score[e] / 10;
                last_line[e][10] = 32;
-               last_line[e][15] = (char) tensregister + 48;
-               last_line[e][16] = (char) onesregister + 48;
+               last_line[e][15] = (char) tens_register + 48;
+               last_line[e][16] = (char) ones_register + 48;
                if(last_line[e][15] == 48){last_line[e][15] = 32;}
 
                if(score[e] < win_score)
@@ -895,13 +891,12 @@ add()
 
                    for (c = 0; c < 20; c++)
                      {
-                       if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-                       else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-                       SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+                       if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+                       else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+                       SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                      }
                    
                    SDL_UpdateWindowSurface(slate);
-                 
                  }
 
                               /* DECLARE A WINNER */
@@ -914,8 +909,7 @@ add()
                    win_page();
                    goaround = 1;
                    return 0;
-                 } 
-               
+                 }              
             } 
               
               else if(stuans[e] != answer[e])
@@ -926,23 +920,23 @@ add()
                   goofed[e] = 1;
 
                   z[0] = last_line[e][10];              
-                  if(net_size==40) correction = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-                  else correction = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-                  SDL_BlitSurface(correction, NULL, chalk, &tilem[e][10]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][10]);
                   
                   z[0] = last_line[e][11];              
-                  if(net_size==40) correction = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-                  else correction = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-                  SDL_BlitSurface(correction, NULL, chalk, &tilem[e][11]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                   SDL_UpdateWindowSurface(slate);
                  
                   last_line[e][10] = 'X';
                   last_line[e][11] = 'X';
                 
-                  if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, "X" , black);
-                  else ostraca = TTF_RenderText_Solid(fntVeraMono40, "X" , black);
-                  SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][10]);
-                  SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][11]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, "X" , black);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, "X" , black);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][10]);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                   SDL_UpdateWindowSurface(slate);
                 }
         }        
@@ -1019,9 +1013,7 @@ bail()
     {
       type_line[e] = (char) (tline[e] + 48);
     }  
-	
-// TODO: Make this work in Windows.
-/*   if (class == 1) FP = fopen("/usr/local/com/class1/settings/type_line", "w");
+  if (class == 1) FP = fopen("/usr/local/com/class1/settings/type_line", "w");
   if (class == 2) FP = fopen("/usr/local/com/class2/settings/type_line", "w");
   if (class == 3) FP = fopen("/usr/local/com/class3/settings/type_line", "w");
   if (class == 4) FP = fopen("/usr/local/com/class4/settings/type_line", "w");
@@ -1032,7 +1024,7 @@ bail()
   if (class == 9) FP = fopen("/usr/local/com/class9/settings/type_line", "w");
 
   fputs(type_line, FP);
-  fclose(FP); */
+  fclose(FP);
   return 0;
 }
 
@@ -1040,11 +1032,11 @@ int
 board()
 {
   char a;
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 30);
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40);
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30);
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
 
-  slate = SDL_CreateWindow("keyboard",0,0,1024,768,0);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  slate = SDL_CreateWindow("keyboard",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
+  chalk = SDL_GetWindowSurface(slate);
 
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
@@ -1060,10 +1052,9 @@ board()
       renew[e] = 1;
       score[e]=0;
       cursor[e] = 0;
-      if(net_size == 40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[tt[e]], hue[e]);
-      else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[tt[e]], hue[e]);
-      SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
-
+      if(net_size == 40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[tt[e]], hue[e]);
+      else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[tt[e]], hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
     }
      
   SDL_UpdateWindowSurface(slate);
@@ -1080,7 +1071,7 @@ board()
 
                         /* PENALTY TIMEOUT */
 
-           if ((blockinput[e] == 1) & (time(t) - clk[e] < 4))
+           if ((block_input[e] == 1) & (time(t) - clk[e] < 4))
              {
                a = get_event(e);
                continue;
@@ -1088,18 +1079,18 @@ board()
            
                            /* END PENALTY */
 
-           if ((blockinput[e] == 1) & (time(t) - clk[e] > 3))
+           if ((block_input[e] == 1) & (time(t) - clk[e] > 3))
              {
-               blockinput[e] = 0;
+               block_input[e] = 0;
                tt[e] = (int) tline[e]; 
                renew[e] = 1;
                score[e]=0;
                cursor[e] = 0;
 
                SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
-               if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[tt[e]], hue[e]);
-               else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[tt[e]], hue[e]);
-               SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[tt[e]], hue[e]);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[tt[e]], hue[e]);
+               SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
                SDL_UpdateWindowSurface(slate);
 
@@ -1120,9 +1111,9 @@ board()
                    eval_type();
                    tline[e] = tt[e];
                    SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
-                   if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[m], hue[e]);
-                   else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[m], hue[e]);
-                   SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[m], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[m], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
               
                    SDL_UpdateWindowSurface(slate);
                  }
@@ -1141,16 +1132,16 @@ board()
            if (a ==  ttext[tt[e]][cursor[e]])
              {
                score[e]++;
-               if(net_size==40) scratchpad = TTF_RenderText_Solid(fntVeraMono30, &z[0], yellow);
-               else scratchpad = TTF_RenderText_Solid(fntVeraMono40, &z[0], yellow);
-               SDL_BlitSurface(scratchpad, NULL, chalk, &tile[e][cursor[e]]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], yellow);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], yellow);
+               SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
              } 
 
            else
              { 
-               if(net_size==40) scratchpad = TTF_RenderText_Solid(fntVeraMono30, "X", black);
-               else scratchpad = TTF_RenderText_Solid(fntVeraMono40, "X", black);
-               SDL_BlitSurface(scratchpad, NULL, chalk, &tile[e][cursor[e]]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "X", black);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, "X", black);
+               SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
              }
 
            SDL_UpdateWindowSurface(slate);
@@ -1165,10 +1156,10 @@ board()
 int
 changepage()
 {
-  TTF_Font  *fntVeraMono45 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 45);
+  TTF_Font  *fntVeraMono45 = TTF_OpenFont( ttf_vera_mono_path, 45);
 
-  SDL_Window*  changeslate = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* display = SDL_GetWindowSurface(changeslate);
+  changeslate = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
+  display = SDL_GetWindowSurface(changeslate);
   
   SDL_Renderer *rendc = SDL_CreateRenderer(changeslate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rendc, 255,255,255,255);
@@ -1195,8 +1186,8 @@ changepage()
   slots[4].x = 0;
   slots[4].y = 595;
       
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono45, "  NUMBER OF KEYBOARD TO BE ASSIGNED?", black);
-  SDL_BlitSurface(line0, NULL, display, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono45, "  NUMBER OF KEYBOARD TO BE ASSIGNED?", black);
+  SDL_BlitSurface(scratch, NULL, display, &slots[0]);
   SDL_UpdateWindowSurface(changeslate);
 
   char liner[3] = "  ";
@@ -1206,8 +1197,8 @@ changepage()
   liner[0] = (char) (x + 48);
   boardnumber = x;
 
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono45, liner, hue[e]);
-  SDL_BlitSurface(line1, NULL, display, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono45, liner, hue[e]);
+  SDL_BlitSurface(scratch, NULL, display, &slots[1]);
   SDL_UpdateWindowSurface(changeslate);
  
   int y = get_digit();
@@ -1219,13 +1210,23 @@ changepage()
     }
   liner[1] = (char)(y + 48);
   boardnumber = 10 * boardnumber + y;
-
-  SDL_Surface  *line2 = TTF_RenderText_Solid(fntVeraMono45, liner, hue[e]);
-  SDL_BlitSurface(line2, NULL, display, &slots[1]);
+  
+  scratch = TTF_RenderText_Solid(fntVeraMono45, liner, hue[e]);
+  SDL_BlitSurface(scratch, NULL, display, &slots[1]);
   SDL_UpdateWindowSurface(changeslate);
+   if(boardnumber > net_size)
+     {
+       scratch = TTF_RenderText_Solid(fntVeraMono45, "  YOU DON'T HAVE THAT MANY BOARDS!", black);
+       SDL_BlitSurface(scratch, NULL, chalk, &slots[4]);
+       SDL_UpdateWindowSurface(changeslate);
+       SDL_Delay(2000);
+
+       SDL_DestroyWindow(changeslate);
+       detente();
+       return 0;
+     }
 
   alpha();
-
   SDL_DestroyWindow(changeslate);
   fetch_name(e);
 
@@ -1236,11 +1237,11 @@ int
 check()
 {
   int d = 0;
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 30 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40);
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
 
-  slate = SDL_CreateWindow("check",0,0,1024,768,0);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  slate = SDL_CreateWindow("check",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -1252,9 +1253,9 @@ check()
   for (e = 0; e < net_size; e++)
     {
        step[e] = 0;
-       if(net_size == 40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[194], hue[e]);
-       else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[194], hue[e]);
-       SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+       if(net_size == 40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[194], hue[e]);
+       else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[194], hue[e]);
+       SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
        cursor[e] = 0;
        page[e] = 0;
     }
@@ -1266,10 +1267,10 @@ check()
    while (1)
      {    
        if (get_char() == 10) 
-       {
-         SDL_DestroyWindow(slate);
-         return 0;
-       }
+         {
+           SDL_DestroyWindow(slate);
+           return 0;
+         }
        for (e = 0; e < net_size; e++)
          {   
            a = 0;
@@ -1281,25 +1282,25 @@ check()
            
            if ((step[e] == 0) && (a > 47) && (a < 58))
              {
-
+                
                       /* Start over if answer is more than 3 digits long. */
-
+                
                jumpstart:
                if (cursor[e] > 2)
                  {
-
                    cursor[e] = 0;
                    page[e] = 0;
                    
                    SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
 
-                   if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[194], hue[e]);
-                   else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[194], hue[e]);
-                   SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[194], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[194], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
                    SDL_UpdateWindowSurface(slate);
                    continue;
                  }
+
                                /* RECEIVE PAGE NUMBER */
 
                page[e] = 10 * page[e] + (int) a - 48;  
@@ -1309,9 +1310,9 @@ check()
                    z1[0] = (int) a;
                    SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
 
-                   if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
-                   else ostraca = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-                   SDL_BlitSurface(ostraca, NULL, chalk, &tile[e][cursor[e]]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                  }
 
                else
@@ -1319,9 +1320,9 @@ check()
                   if (cursor[e] == 1)  z2[0] = (int) a;
                   if (cursor[e] == 2)  z3[0] = (int) a;
 
-                  if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
-                  else ostraca = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-                  SDL_BlitSurface(ostraca, NULL, chalk, &tile[e][cursor[e]]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                 } 
 
                SDL_UpdateWindowSurface(slate);
@@ -1336,9 +1337,9 @@ check()
                cursor[e] = 0;
                SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
 
-               if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[195], hue[e]);
-               else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[195], hue[e]);
-               SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[195], hue[e]);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[195], hue[e]);
+               SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
                SDL_UpdateWindowSurface(slate);
 
@@ -1359,9 +1360,9 @@ check()
                    SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
                  }
 
-               if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
-               else ostraca = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-               SDL_BlitSurface(ostraca, NULL, chalk, &tile[e][cursor[e]]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+               SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                
                SDL_UpdateWindowSurface(slate);
 
@@ -1385,9 +1386,9 @@ check()
                   step[e]++;
                   SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
                 
-                  if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[187], hue[e]);
-                  else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[187], hue[e]);
-                  SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[187], hue[e]);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[187], hue[e]);
+                  SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
                   
                   SDL_UpdateWindowSurface(slate);
                 
@@ -1406,14 +1407,13 @@ check()
                      {
                        z1[e] = (int) a;
                        SDL_FillRect(chalk, &line[e], SDL_MapRGB(chalk->format,255,255,255));
-
                      }
                    if (cursor[e] == 1) z2[0] = (int) a;
                    if (cursor[e] == 2) z3[0] = (int) a;              
                      
-                   if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
-                   else ostraca = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-                   SDL_BlitSurface(ostraca, NULL, chalk, &tile[e][cursor[e]]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                   
                    SDL_UpdateWindowSurface(slate);
                  
@@ -1431,18 +1431,18 @@ check()
 
                  if (strcmp(answ[e],guess[e]) == 0)
                    {
-                     if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[193], hue[e]);
-                     else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[193], hue[e]);
-                     SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+                     if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[193], hue[e]);
+                     else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[193], hue[e]);
+                     SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
                      cursor[e] = 0;
                      step[e] = 0;
                    }
 
                  else
                    {
-                     if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono30, ttext[188], hue[e]);
-                     else ostraca = TTF_RenderText_Solid(fntVeraMono40, ttext[188], hue[e]);
-                     SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+                     if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, ttext[188], hue[e]);
+                     else scratch = TTF_RenderText_Solid(fntVeraMono40, ttext[188], hue[e]);
+                     SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
                      step[e] = 0;
                    }
                      problem[e] = 0;
@@ -1472,10 +1472,10 @@ clear_pro()
 int
 detente()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
     
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -1493,25 +1493,17 @@ detente()
   slots[2].x = 0;
   slots[2].y = 380;
         
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono50, " PRESS ENTER TO CONTINUE ", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
-             
+  scratch = TTF_RenderText_Solid(fntVeraMono50, " PRESS ENTER TO CONTINUE ", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
   SDL_UpdateWindowSurface(slate); 
-        
-  SDL_Event event;
+
+  int letter = 0;
   while(1)
     {
-      SDL_PollEvent(&event);    
-      if (event.type == SDL_KEYDOWN)
-        {
-          switch(event.key.keysym.sym)
-           {
-              case SDLK_RETURN:   
-              SDL_DestroyWindow(slate);
-              return 0;                  
-           }
-        }
-    }
+      letter = get_digit();
+      if(letter == 10) break;
+    }    
+                   
   SDL_DestroyWindow(slate);
   return 0;
 }
@@ -1520,13 +1512,13 @@ int
 divide()
 {
   char a;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
 
                           /* OPEN EMPTY WHITE WINDOW */
 
   slate = SDL_CreateWindow("div",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -1545,10 +1537,10 @@ divide()
       score[e]=0;
       make_div_prob(e);
     
-      onesregister =  dividend[e] % 10;
-      tensregister = dividend[e] / 10;
-      last_line[e][1] = (char) tensregister + 48;
-      last_line[e][2] = (char) onesregister + 48;
+      ones_register =  dividend[e] % 10;
+      tens_register = dividend[e] / 10;
+      last_line[e][1] = (char) tens_register + 48;
+      last_line[e][2] = (char) ones_register + 48;
       last_line[e][4] = '/';
       last_line[e][6] = (char) divisor[e] + 48;
       last_line[e][8] = '=';
@@ -1556,9 +1548,9 @@ divide()
       
       for (c = 0; c < 20; c++)
         {
-          if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-          else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-          SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+          if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+          else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
         }
     }  
     
@@ -1582,9 +1574,9 @@ divide()
                 {
                   goofed[e] = 0;
                   z[0] = last_line[e][11];
-                  if (net_size==40)lin1 = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-                  else lin1 = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-                  SDL_BlitSurface(lin1, NULL, chalk, &tilem[e][11]);
+                  if (net_size==40)scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                   SDL_UpdateWindowSurface(slate);
                 }    
               else
@@ -1606,10 +1598,9 @@ divide()
                z[0] = (int) a;
                last_line[e][11] = (int)a;
                 
-
-               if(net_size==40) lettr = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
-               else lettr = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-               SDL_BlitSurface(lettr, NULL, chalk, &tilem[e][11]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+               SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                SDL_UpdateWindowSurface(slate);
                stop[e] = 1;
                continue;
@@ -1617,37 +1608,37 @@ divide()
                                        /* EVALUATE ANSWERS. */
                          
               evaluatediv:
-
+              
                              /* ANSWER IS GOOD. */
-
+              
               if (stuans[e] == answer[e])
                  { 
                    for (c = 0; c < 20; c++)
                      {
-                       if(net_size==40) hogwash = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
-                       else hogwash = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
-                       SDL_BlitSurface(hogwash, NULL, chalk, &tilem[e][c]);
+                       if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
+                       else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
+                       SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                      }
                    SDL_UpdateWindowSurface(slate);
-
+                   
                    advance[e] = 1;
                    score[e] = score[e] + divpoints[e + 1];
-                   onesregister = score[e] % 10;
-                   tensregister = score[e] / 10;
-                   last_line[e][15] = (char) onesregister + 48;
-                   last_line[e][14] = (char) tensregister + 48;
+                   ones_register = score[e] % 10;
+                   tens_register = score[e] / 10;
+                   last_line[e][15] = (char) ones_register + 48;
+                   last_line[e][14] = (char) tens_register + 48;
                    last_line[e][11] = 32;
                    if(last_line[e][14] == 48){last_line[e][14] = 32;}
-
+                   
                    if(score[e] < win_score)
                      {
                        stop[e] = 0;
                        make_div_prob(e);
                       
-                       onesregister =  dividend[e] % 10;
-                       tensregister = dividend[e] / 10;
-                       last_line[e][1] = (char) tensregister + 48;
-                       last_line[e][2] = (char) onesregister + 48;
+                       ones_register =  dividend[e] % 10;
+                       tens_register = dividend[e] / 10;
+                       last_line[e][1] = (char) tens_register + 48;
+                       last_line[e][2] = (char) ones_register + 48;
                        last_line[e][4] = '/';
                        last_line[e][6] = (char) divisor[e] + 48;
                        last_line[e][8] = '=';
@@ -1656,9 +1647,9 @@ divide()
                       
                        for (c = 0; c < 20; c++)
                          {
-                           if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-                           else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-                           SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+                           if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+                           else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+                           SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                          }
                        
                        SDL_UpdateWindowSurface(slate);
@@ -1674,26 +1665,26 @@ divide()
                        return 0;
                      } 
                  }   
-               
+                      
                              /* ANSWER IS BAD. */
-
+                    
                else if(last_line[e][11] != answer[e])
                  {
                    clk[e] = time(t);
                    goofed[e] = 1;
                    stop[e] = 0;
-
+                    
                    z[0] = last_line[e][11];                
-                   if(net_size==40) correction = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-                   else correction = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-                   SDL_BlitSurface(correction, NULL, chalk, &tilem[e][11]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                    SDL_UpdateWindowSurface(slate);
-
+                   
                    z[0] = 'X';
                    last_line[e][11] = 'X';
-                   if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &z[0], black);
-                   else ostraca = TTF_RenderText_Solid(fntVeraMono40, &z[0], black);
-                   SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][11]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], black);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], black);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                    SDL_UpdateWindowSurface(slate);
                  }
             }
@@ -1702,14 +1693,14 @@ divide()
   SDL_DestroyWindow(slate);
   return 0;          
 }
-
+ 
 int
 double_check()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
     
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -1727,14 +1718,14 @@ double_check()
   slots[2].x = 0;
   slots[2].y = 380;
         
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono50, " ARE YOU SURE YOU WANT TO QUIT? ", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, " ARE YOU SURE YOU WANT TO QUIT? ", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
              
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono50, "            1 - QUIT NOW", black);
-  SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "            1 - QUIT NOW", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
              
-  SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono50, "            2 - DON'T QUIT", black);
-  SDL_BlitSurface(line2, NULL, chalk, &slots[2]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "            2 - DON'T QUIT", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[2]);
              
   SDL_UpdateWindowSurface(slate); 
         
@@ -1742,7 +1733,7 @@ double_check()
   option = 0;     
   while(1)
     {
-      SDL_PollEvent(&event);    
+      SDL_WaitEvent(&event);    
       if (event.type == SDL_KEYDOWN)
         {
           switch(event.key.keysym.sym)
@@ -1758,7 +1749,7 @@ double_check()
                    return 0;
                  }
                exit(0);
-
+     
              case SDLK_2:
                option = 2;  
                SDL_DestroyWindow(slate);
@@ -1769,7 +1760,7 @@ double_check()
   SDL_DestroyWindow(slate);
   return 0;
 }
-
+  
 int
 dump()
 {
@@ -1783,7 +1774,7 @@ dump()
     }
   return 0;
 }
-
+    
 int
 eval_type()
 {  
@@ -1799,26 +1790,26 @@ eval_type()
            m = 191;
          }
      }
-   blockinput[e] = 1;
+   block_input[e] = 1;
    clk[e] = time(t);
    return 0;    
 }    
-
+    
 int
 fetch_letter()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50);
-
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50);
+  
   slate = SDL_CreateWindow("classname",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
-
+  
                /* DIVIDE SLATE INTO TILES. */ 
-
+    
    struct SDL_Rect tile[1000];
    int b = 0;
    for (c = 0;  c < 17; c++)
@@ -1830,10 +1821,10 @@ fetch_letter()
           }
      }
    
-   SDL_Surface *line = TTF_RenderText_Solid(fntVeraMono50, "WHO TEACHES THIS CLASS? ", red);
-   SDL_BlitSurface(line, NULL, chalk, &tile[230]);
+   scratch = TTF_RenderText_Solid(fntVeraMono50, "WHO TEACHES THIS CLASS? ", red);
+   SDL_BlitSurface(scratch, NULL, chalk, &tile[230]);
    SDL_UpdateWindowSurface(slate);
-
+    
    for (k = 0; k < 20; k++)
      {
        teacher[k] = 0;
@@ -2082,9 +2073,8 @@ fetch_letter()
                           break;
                              
                         case SDLK_RETURN:   
-
-// TODO: Make this work in Windows.
-/*                           if (class == 1) FP = fopen("/usr/local/com/class1/names/teacher", "w");
+         
+                          if (class == 1) FP = fopen("/usr/local/com/class1/names/teacher", "w");
                           if (class == 2) FP = fopen("/usr/local/com/class2/names/teacher", "w");
                           if (class == 3) FP = fopen("/usr/local/com/class3/names/teacher", "w");
                           if (class == 4) FP = fopen("/usr/local/com/class4/names/teacher", "w");
@@ -2093,13 +2083,13 @@ fetch_letter()
                           if (class == 7) FP = fopen("/usr/local/com/class7/names/teacher", "w");
                           if (class == 8) FP = fopen("/usr/local/com/class8/names/teacher", "w");
                           if (class == 9) FP = fopen("/usr/local/com/class9/names/teacher", "w");
-
+             
                           fputs(teacher, FP);
-                          fclose(FP); */
+                          fclose(FP);
                           SDL_DestroyWindow(slate);
                           return 0;
                           break;
-
+                 
                         default:
                           letter[0] = ' ';
                           break;                     
@@ -2112,8 +2102,8 @@ fetch_letter()
                       {
                         break;
                       }
-                    SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono50, letter, black);
-                    SDL_BlitSurface(line1, NULL, chalk, &tile[a]);
+                    scratch = TTF_RenderText_Solid(fntVeraMono50, letter, black);
+                    SDL_BlitSurface(scratch, NULL, chalk, &tile[a]);
                     if (a < 675) {a++;}
                     SDL_UpdateWindowSurface(slate);
                  }
@@ -2121,94 +2111,95 @@ fetch_letter()
          }
      }
   alpha();
-
+  
   return 0;
 }
 
 int
 fetch_name()
 {  
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
 
                          /* OPEN EMPTY WHITE WINDOW. */
 
   slate = SDL_CreateWindow("add",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
-
+  chalk = SDL_GetWindowSurface(slate);
+  
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
-
+  
                         /* CREATE RECTANGLE ARRAY. */
-
-   struct SDL_Rect tile[1000];
-   int b = 0;
-   for (c = 0;  c < 17; c++)
-     {
-       for (b = 0; b < 45;  b++)
-          {
-            tile[b+c*45].x = (b * 30);
-            tile[b+c*45].y = c * 44;
-          }
-     }
+  
+  struct SDL_Rect tile[1000];
+  int b = 0;
+  for (c = 0;  c < 17; c++)
+    {
+      for (b = 0; b < 45;  b++)
+        {
+          tile[b+c*45].x = (b * 30);
+          tile[b+c*45].y = c * 44;
+        }
+    }
    
                          /* PUT MESSAGE ON SCREEN. */
    
-   SDL_Surface *ask = TTF_RenderText_Solid(fntVeraMono50, "GIMME A NAME! ", red);
-   SDL_BlitSurface(ask, NULL, chalk, &tile[235]);
-   SDL_UpdateWindowSurface(slate);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "GIMME A NAME! ", red);
+  SDL_BlitSurface(scratch, NULL, chalk, &tile[235]);
+  SDL_UpdateWindowSurface(slate);
    
-   int a = 325;
-   char letter;
-   k = 0;
+  int a = 325;
+  char letter;
+  k = 0;
 
-   for(k = 0; k < 10; k++)
-     {
-       while(1)
-         {
-           letter = get_char();         
-           if (letter != 0) break;
-         }
-       if (letter == 10) break; 
-       studint[k] = letter;
-       studint[k+1] = 0;
+  for(k = 0; k < 10; k++)
+    {
+      while(1)
+        {
+          letter = get_char();         
+          if (letter != 0) break;
+        }
+      if (letter == 10) break; 
+      studint[k] = letter;
+      studint[k+1] = 0;
        
-       SDL_Surface *scratchpad = TTF_RenderText_Solid(fntVeraMono50, &studint[k], red);
-       SDL_BlitSurface(scratchpad, NULL, chalk, &tile[a]);
-       if (a < 675) {a++;}
-       SDL_UpdateWindowSurface(slate);
-     }
+      scratch = TTF_RenderText_Solid(fntVeraMono50, &studint[k], red);
+      SDL_BlitSurface(scratch, NULL, chalk, &tile[a]);
+      if (a < 675) {a++;}
+      SDL_UpdateWindowSurface(slate);
+    }
 
-   int g = 0;
-   for( g = 0; g < 10; g++)
-     {
-       roster[boardnumber][g] = studint[g];
-     }
+  int g = 0;
+  for( g = 0; g < 10; g++)
+    {
+      roster[boardnumber][g] = studint[g];
+    }
+  SDL_DestroyWindow(slate);
   return letter;
 }
 
 int
 fetch_win_score()
 {
-   int b = 0;
-   int digit = 0;
-   TTF_Font  *fntVeraMono45 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 45);
+  int b = 0;
+  int digit = 0;
+  TTF_Font  *fntVeraMono45 = TTF_OpenFont( ttf_vera_mono_path, 45);
       
                        /* CREATE SLATE ON WHICH TO WRITE */
-
+  
   slate = SDL_CreateWindow("winscore",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
-
+  
           
                        /* DIVIDE WHITEBOARD INTO TILES */
-
+  
   struct SDL_Rect tile[1000];
   for (c = 0;  c < 17; c++)
     {
@@ -2221,34 +2212,36 @@ fetch_win_score()
   
                                /* ASK FOR SCORE */
   
-  SDL_Surface *line = TTF_RenderText_Solid(fntVeraMono45, "WHAT SCORE (between 10 and 99) WINS?", black);
-  SDL_BlitSurface(line, NULL, chalk, &tile[316]);
+  scratch = TTF_RenderText_Solid(fntVeraMono45, "WHAT SCORE (between 10 and 99) WINS?", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &tile[316]);
   SDL_UpdateWindowSurface(slate);
    
   k = 0;         
   char proxy[2] = {0,0};
-  proxy[0] = (char) get_digit() + 48;
-  
-  line = TTF_RenderText_Solid(fntVeraMono45, proxy , red);
-  SDL_BlitSurface(line, NULL, chalk, &tile[430]);
-  SDL_UpdateWindowSurface(slate);
-  
-  win_score = (int) proxy[0] - 48;
-  
-  proxy[1] = (char) get_digit() + 48;
-  
-  line = TTF_RenderText_Solid(fntVeraMono45, proxy , red);
-  SDL_BlitSurface(line, NULL, chalk, &tile[430]);
-  SDL_UpdateWindowSurface(slate);
 
+  while((proxy[0] < 49) || (proxy[0] > 57)) 
+    {
+      proxy[0] = (char) get_digit() + 48;
+    }
+  scratch = TTF_RenderText_Solid(fntVeraMono45, proxy, red);
+  SDL_BlitSurface(scratch, NULL, chalk, &tile[430]);
+  SDL_UpdateWindowSurface(slate);
+    win_score = (int) proxy[0] - 48;
+  
+  while((proxy[1] < 48) || (proxy[1] > 57)) 
+    {
+      proxy[1] = (char) get_digit() + 48;
+    } 
+  scratch = TTF_RenderText_Solid(fntVeraMono45, proxy, red);
+  SDL_BlitSurface(scratch, NULL, chalk, &tile[430]);
+  SDL_UpdateWindowSurface(slate); 
   win_score = 10 * win_score + (int) proxy[1] - 48;
-
+  
   alpha();
-
+  
   ww[0] = (char)(win_score);
-
-// TODO: Make this work in Windows.
-/*   if (class == 1) FP = fopen("/usr/local/com/class1/settings/win_score", "w");
+  
+  if (class == 1) FP = fopen("/usr/local/com/class1/settings/win_score", "w");
   if (class == 2) FP = fopen("/usr/local/com/class2/settings/win_score", "w");
   if (class == 3) FP = fopen("/usr/local/com/class3/settings/win_score", "w");
   if (class == 4) FP = fopen("/usr/local/com/class4/settings/win_score", "w");
@@ -2257,83 +2250,81 @@ fetch_win_score()
   if (class == 7) FP = fopen("/usr/local/com/class7/settings/win_score", "w");
   if (class == 8) FP = fopen("/usr/local/com/class8/settings/win_score", "w");
   if (class == 9) FP = fopen("/usr/local/com/class9/settings/win_score", "w");
-
+  
   fputs(ww, FP);
-  fclose(FP); */
+  fclose(FP);
   SDL_DestroyWindow(slate);
   return digit;
 }
-
+  
 int
 file_save()
 {
-   for (e = 0;  e < 26; e++)
-      {
-        strcpy (Buf, "");
-
-// TODO: Make this work in Windows.
-/*         if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
-        if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
-        if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
-        if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
-        if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
-        if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
-        if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
-        if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
-        if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
-
-        Buf[32] = e + 97;
-        Buf[33] = 0;
-         
-        FP = fopen (Buf, "w");
-        fputs (comp[e], FP);
-        fclose (FP);
-        
-        strcpy (Buf, "");
-        strcpy (Buf, "/root/Documents/");
-        strcat (Buf, roster[e + 1]);
+  for (e = 0;  e < 26; e++)
+    {
+      strcpy (Buf, "");
+    
+      if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
+      if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
+      if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
+      if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
+      if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
+      if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
+      if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
+      if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
+      if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
       
-        if (roster[e + 1][0] != 0)
-          {   
-            FP = fopen (Buf, "w");
-            fputs (comp[e], FP);
-            fclose (FP);
-          } */
-      }
-
-   for (e = 26;  e < 41; e++)
-      {
-        strcpy (Buf, "");
-
-// TODO: Make this work in Windows.
-/*         if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
-        if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
-        if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
-        if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
-        if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
-        if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
-        if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
-        if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
-        if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
-
-        Buf[32] = e + 23;
-        Buf[33] = 0;
+      Buf[32] = e + 97;
+      Buf[33] = 0;
          
-        FP = fopen (Buf, "w");
-        fputs (comp[e], FP);
-        fclose (FP);
+      FP = fopen (Buf, "w");
+      fputs (comp[e], FP);
+      fclose (FP);
         
-        strcpy (Buf, "");
-        strcpy (Buf, "/root/Documents/");
-        strcat (Buf, roster[e + 1]);
+      strcpy (Buf, "");
+      strcpy (Buf, "/root/Documents/");
+      strcat (Buf, roster[e + 1]);
       
-        if (roster[e + 1][0] != 0)
-          {   
-            FP = fopen (Buf, "w");
-            fputs (comp[e], FP);
-            fclose (FP);
-          } */
-      }
+      if (roster[e + 1][0] != 0)
+        {   
+          FP = fopen (Buf, "w");
+          fputs (comp[e], FP);
+          fclose (FP);
+        }
+    }
+    
+  for (e = 26;  e < 41; e++)
+    {
+      strcpy (Buf, "");
+      
+      if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
+      if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
+      if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
+      if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
+      if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
+      if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
+      if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
+      if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
+      if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
+      
+      Buf[32] = e + 23;
+      Buf[33] = 0;
+           
+      FP = fopen (Buf, "w");
+      fputs (comp[e], FP);
+      fclose (FP);
+          
+      strcpy (Buf, "");
+      strcpy (Buf, "/root/Documents/");
+      strcat (Buf, roster[e + 1]);
+      
+      if (roster[e + 1][0] != 0)
+        {   
+          FP = fopen (Buf, "w");
+          fputs (comp[e], FP);
+          fclose (FP);
+        }
+    }
   return 0;
 }
 
@@ -2346,8 +2337,8 @@ find_answer()
     {
       if (key[a] == 126)
         {
-           b++;
-           c = 0;
+          b++;
+          c = 0;
         }
       if (key[a] == 124) c++;
       if ((b == page[e]) && (c == problem[e]))
@@ -2362,12 +2353,12 @@ find_answer()
   strncpy(answ[e], &dum[0], 40);
   for (c = 0; c < 39; c++)
     {
-       if ((key[a] != 124) && (key[a] != 0) && (key[a] != 125))
-         {
-           answ[e][c] = key[a];
-           a++;
-         }
-       else break;
+      if ((key[a] != 124) && (key[a] != 0) && (key[a] != 125))
+        {
+          answ[e][c] = key[a];
+          a++;
+        }
+      else break;
     }
   return 0;
 }
@@ -2375,259 +2366,257 @@ find_answer()
 int
 get_char()
 {
-   SDL_Event event;           
-   SDL_PollEvent(&event);    
-   if (event.type == SDL_KEYDOWN)
-      {
-        switch(event.key.keysym.sym)
-           {
-              case SDLK_0:
-                letra[e] = '0';  
-                break;
+  SDL_Event event;           
+  SDL_PollEvent(&event);    
+  if (event.type == SDL_KEYDOWN)
+    {
+      switch(event.key.keysym.sym)
+        {
+          case SDLK_0:
+            letra[e] = '0';  
+            break;
+              
+          case SDLK_1:
+            letra[e] = '1';  
+            break;
                 
-              case SDLK_1:
-                letra[e] = '1';  
-                break;
-                
-              case SDLK_2:
-                letra[e] = '2';  
-                break;
+          case SDLK_2:
+            letra[e] = '2';  
+            break;
                  
-              case SDLK_3:
-                letra[e] = '3';  
-                break;
+          case SDLK_3:
+            letra[e] = '3';  
+            break;
                   
-              case SDLK_4:
-                letra[e] = '4';  
-                break;
+          case SDLK_4:
+            letra[e] = '4';  
+            break;
                   
-                  case SDLK_5:
-                    letra[e] = '5';  
-                    break;
+          case SDLK_5:
+            letra[e] = '5';  
+            break;
                   
-                  case SDLK_6:
-                    letra[e] = '6';  
-                    break;
+          case SDLK_6:
+            letra[e] = '6';  
+            break;
                   
-                  case SDLK_7:
-                    letra[e] = '7';  
-                    break;
+          case SDLK_7:
+            letra[e] = '7';  
+            break;
                    
-                  case SDLK_8:
-                    letra[e] = '8';  
-                    break;
+          case SDLK_8:
+            letra[e] = '8';  
+            break;
                    
-                  case SDLK_9:
-                    letra[e] = '9';  
-                    break;
+           case SDLK_9:
+             letra[e] = '9';  
+             break;
                   
-                  case SDLK_a:
-                    letra[e] ='A';
-                    break;
+           case SDLK_a:
+             letra[e] ='A';
+             break;
                            
-                  case SDLK_b:
-                    letra[e] ='B';
-                    break;
+           case SDLK_b:
+             letra[e] ='B';
+             break;
                           
-                  case SDLK_c:
-                    letra[e] ='C';
-                    break;
+           case SDLK_c:
+             letra[e] ='C';
+             break;
                             
-                  case SDLK_d:
-                    letra[e] ='D';
-                    break;
+           case SDLK_d:
+             letra[e] ='D';
+             break;
                          
-                  case SDLK_e:
-                    letra[e] ='E';
-                    break;
+           case SDLK_e:
+             letra[e] ='E';
+             break;
                           
-                  case SDLK_f:
-                    letra[e] ='F';
-                    break;
-                             
-                  case SDLK_g:
-                    letra[e] ='G';
-                    break;
-                            
-                  case SDLK_h:
-                    letra[e] ='H';
-                    break;
-                           
-                  case SDLK_i:
-                    letra[e] ='I';
-                    break;
+           case SDLK_f:
+             letra[e] ='F';
+             break;
                           
-                  case SDLK_j:
-                    letra[e] ='J';
-                    break;
+           case SDLK_g:
+             letra[e] ='G';
+             break;
                            
-                  case SDLK_k:
-                    letra[e] ='K';
-                    break;
-                           
-                  case SDLK_l:
-                    letra[e] ='L';
-                    break;
-                            
-                  case SDLK_m:
-                    letra[e] ='M';
-                    break;
+           case SDLK_h:
+             letra[e] ='H';
+             break;
                           
-                  case SDLK_n:
-                    letra[e] ='N';
-                    break;
+           case SDLK_i:
+             letra[e] ='I';
+             break;
+                          
+           case SDLK_j:
+             letra[e] ='J';
+             break;
+                           
+           case SDLK_k:
+             letra[e] ='K';
+             break;
+                           
+           case SDLK_l:
+             letra[e] ='L';
+             break;
                             
-                  case SDLK_o:
-                    letra[e] ='O';
-                    break;
+           case SDLK_m:
+             letra[e] ='M';
+             break;
+                       
+           case SDLK_n:
+             letra[e] ='N';
+             break;
+                            
+           case SDLK_o:
+             letra[e] ='O';
+             break;
                                 
-                  case SDLK_p:
-                    letra[e] ='P';
-                    break;
+           case SDLK_p:
+             letra[e] ='P';
+             break;
                               
-                  case SDLK_q:
-                    letra[e] ='Q';
-                    break;
-                          
-                  case SDLK_r:
-                    letra[e] ='R';
-                    break;
+           case SDLK_q:
+             letra[e] ='Q';
+             break;
+                        
+           case SDLK_r:
+             letra[e] ='R';
+             break;
                            
-                  case SDLK_s:
-                    letra[e] ='S';
-                    break;
+           case SDLK_s:
+             letra[e] ='S';
+             break;
                           
-                  case SDLK_t:
-                    letra[e] ='T';
-                    break;
+           case SDLK_t:
+             letra[e] ='T';
+             break;
                          
-                  case SDLK_u:
-                    letra[e] ='U';
-                    break;
+           case SDLK_u:
+             letra[e] ='U';
+             break;
                           
-                  case SDLK_v:
-                    letra[e] ='V';
-                    break;
+           case SDLK_v:
+             letra[e] ='V';
+             break;
                         
-                  case SDLK_w:
-                    letra[e] ='W';
-                    break;
+           case SDLK_w:
+             letra[e] ='W';
+             break;
                         
-                  case SDLK_x:
-                    letra[e] ='X';
-                    break;
+           case SDLK_x:
+             letra[e] ='X';
+             break;
                             
-                  case SDLK_y:
-                    letra[e] ='Y';
-                    break;
+           case SDLK_y:
+             letra[e] ='Y';
+             break;
                         
-                  case SDLK_z:
-                    letra[e] ='Z';
-                    break;
+           case SDLK_z:
+             letra[e] ='Z';
+             break;
 
-                  case SDLK_SPACE:
-                    letra[e] =' ';
-                    break;
-                                         
-                  case SDLK_COMMA:
-                    letra[e] ='<';
-                    break;
+           case SDLK_SPACE:
+             letra[e] =' ';
+             break;
+                                      
+           case SDLK_COMMA:
+             letra[e] ='<';
+             break;
                             
-                  case SDLK_PERIOD:
-                    letra[e] ='>';
-                    break;
+           case SDLK_PERIOD:
+             letra[e] ='>';
+             break;
                            
-                  case SDLK_SEMICOLON:
-                    letra[e] =':';
-                    break;
+           case SDLK_SEMICOLON:
+             letra[e] =':';
+             break;
                            
-                  case SDLK_SLASH:
-                    letra[e] ='?';
-                    break;
+           case SDLK_SLASH:
+             letra[e] ='?';
+             break;
                                         
-                  case SDLK_MINUS:
-                    letra[e] ='_';
-                    break;
+           case SDLK_MINUS:
+             letra[e] ='_';
+             break;
                           
-                  case SDLK_LEFTPAREN:
-                    letra[e] ='(';
-                    break;
+           case SDLK_LEFTPAREN:
+             letra[e] ='(';
+             break;
                          
-                  case SDLK_RIGHTPAREN:
-                    letra[e] =')';
-                    break;
+           case SDLK_RIGHTPAREN:
+             letra[e] =')';
+             break;
                         
-                  case SDLK_QUOTEDBL:
-                    letra[e] ='"';
-                    break;
+           case SDLK_QUOTEDBL:
+             letra[e] ='"';
+             break;
                              
-                  case SDLK_DOLLAR:
-                    letra[e] ='$';
-                    break;
+           case SDLK_DOLLAR:
+             letra[e] ='$';
+             break;
                             
-                  case SDLK_AMPERSAND:
-                    letra[e] ='&';
-                    break;
-                         
-                  case SDLK_EXCLAIM:
-                    letra[e] ='!';
-                    break;
+           case SDLK_AMPERSAND:
+             letra[e] ='&';
+             break;
+                     
+           case SDLK_EXCLAIM:
+             letra[e] ='!';
+             break;
                           
-                  case SDLK_PLUS:
-                    letra[e] ='+';
-                    break;
+           case SDLK_PLUS:
+             letra[e] ='+';
+             break;
                           
-                  case SDLK_HASH:
-                    letra[e] ='#';
-                    break;
+           case SDLK_HASH:
+             letra[e] ='#';
+             break;
                           
-                  case SDLK_QUESTION:
-                    letra[e] ='?';
-                    break;
+           case SDLK_QUESTION:
+             letra[e] ='?';
+             break;
                          
-                  case SDLK_COLON:
-                    letra[e] =':';
-                    break;
+           case SDLK_COLON:
+             letra[e] =':';
+             break;
                          
-                  case SDLK_EQUALS:
-                    letra[e] ='=';
-                    break;
+           case SDLK_EQUALS:
+             letra[e] ='=';
+             break;
                              
-                  case SDLK_GREATER:
-                    letra[e] ='>';
-                    break;
+           case SDLK_GREATER:
+             letra[e] ='>';
+             break;
                         
-                  case SDLK_LEFTBRACKET:
-                    letra[e] ='[';
-                    break;
+           case SDLK_LEFTBRACKET:
+             letra[e] ='[';
+             break;
                             
-                  case SDLK_RIGHTBRACKET:
-                    letra[e] =']';
-                    break;
+           case SDLK_RIGHTBRACKET:
+             letra[e] =']';
+             break;
                         
-                  case SDLK_LESS:
-                    letra[e] ='<';
-                    break;
+           case SDLK_LESS:
+             letra[e] ='<';
+             break;
                             
-                  case SDLK_RETURN:
-                    letra[e] = (char) 10;
-                    return letra[e];
-                    break;
+           case SDLK_RETURN:
+             letra[e] = (char) 10;
+             return letra[e];
+             break;
                  
-                  default:
-                    return 0;
-                }
-            return letra[e];
+           default:
+             return 0;
          }
+      return letra[e];
+    }
    return 0;
 }
 
 int
 get_config()
 {
-	
-// TODO: Make this work in Windows.
-/*   FP = fopen("/usr/local/etc/events/bufa", "r");
+  FP = fopen("/usr/local/etc/events/bufa", "r");
   fgets(BUF[0], 22, FP);
   fclose(FP);
  
@@ -2785,7 +2774,7 @@ get_config()
 
   FP = fopen("/usr/local/etc/events/bufN", "r");
   fgets(BUF[39], 22, FP);
-  fclose(FP); */
+  fclose(FP);
    
   return 0;
 } 
@@ -2858,18 +2847,15 @@ get_digit()
 int
 get_event(int e)
 {
-  return 0;
-  
-  // TODO: Make it work in Windows.
   ltr = 0;
   int value = 0;
   int code = 0;
  
                     /* INITIALIZE THE FILE DESCRIPTOR SET. */
   
-//  fd_set set;
-//  FD_ZERO (&set);
-//  FD_SET (fz[e], &set);
+  fd_set set;
+  FD_ZERO (&set);
+  FD_SET (fz[e], &set);
    
                    /* INITIALIZE THE TIMEOUT DATA STRUCTURE. */
   
@@ -2879,16 +2865,18 @@ get_event(int e)
   
       /* SELECT RETURNS 0 IF TIMEOUT, 1 IF INPUT AVAILABLE, -1 IF ERROR. */
   
-/*   if ((select (FD_SETSIZE, &set, NULL, NULL, &timeout)) < 1)
+  if ((select (FD_SETSIZE, &set, NULL, NULL, &timeout)) < 1)
     {
       return 0;
-    } */
+    }
   
                      /* SET HOW MANY BYTES WILL BE READ. */  
   size_t rb;
 
                      /*  GET ONLY ONE EVENT AT A TIME. */ 
-/*   struct input_event ev[1];
+// TODO: Make this work in Windows.
+#ifndef _WIN
+  struct input_event ev[1];
   
   rb = read(fz[e], ev, sizeof(struct input_event));
  
@@ -2930,7 +2918,8 @@ get_event(int e)
            make_or_break[0] = 0; 
          }
     }
-   return ltr; */
+#endif /* _WIN */
+   return ltr;
 }
 
 int
@@ -2942,8 +2931,7 @@ get_file()
   
                      /* ADDRESS THE CURRENT CLASS. */
   
-// TODO: Make this work in Windows.
-/* /*   if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
+  if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
   if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
   if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
   if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
@@ -2955,7 +2943,7 @@ get_file()
 
                 /* OPEN INDIVIDUAL STUDENT FILES, FIRST 26. */
 
- /*  for (a = 0;  a < 26; a++)
+  for (a = 0;  a < 26; a++)
     {
       Buf[32] = a + 97; 
       Buf[33] = 0;
@@ -2967,11 +2955,11 @@ get_file()
           comp[a][char_nmbr] = (char) incoming;
         }
       fclose(FP);
-    } */
+    }
 
                 /* OPEN INDIVIDUAL STUDENT FILES, LAST 14. */
   
- /*  for (a = 26;  a < net_size; a++)
+  for (a = 26;  a < net_size; a++)
     {
       Buf[32] = a + 38; 
       Buf[33] = 0;
@@ -2983,7 +2971,7 @@ get_file()
           comp[a][char_nmbr] = (char) incoming;
         }
       fclose(FP);
-    } */
+    }
   return 0;
 }
 
@@ -2996,8 +2984,7 @@ get_names()
  
                    /*  ADDRESS THE CURRENT CLASS. */ 
 
-// TODO: Make this work in Windows.
-/*   if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
+  if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
   if (class == 2) strcpy (Buf, "/usr/local/com/class2/names/name");
   if (class == 3) strcpy (Buf, "/usr/local/com/class3/names/name");
   if (class == 4) strcpy (Buf, "/usr/local/com/class4/names/name");
@@ -3005,11 +2992,11 @@ get_names()
   if (class == 6) strcpy (Buf, "/usr/local/com/class6/names/name");
   if (class == 7) strcpy (Buf, "/usr/local/com/class7/names/name");
   if (class == 8) strcpy (Buf, "/usr/local/com/class8/names/name");
-  if (class == 9) strcpy (Buf, "/usr/local/com/class9/names/name"); */
+  if (class == 9) strcpy (Buf, "/usr/local/com/class9/names/name");
 
            /*  GET INDIVIDUAL STUDENT NAMES, FIRST 26. */
 
-/*   for (a = 1;  a < 27; a++)
+  for (a = 1;  a < 27; a++)
     {
       Buf[33] = 0;
       Buf[32] = a + 96; 
@@ -3017,11 +3004,11 @@ get_names()
       strcpy (roster[a], dumm);
       fgets (roster[a], 10, FP);
       fclose(FP);
-    } */
+    }
 
              /* GET INDIVIDUAL STUDENT NAMES, LAST 14. */
   
-/*   for (a = 27;  a < 41; a++)
+  for (a = 27;  a < 41; a++)
     {
       Buf[32] = a + 38; 
       Buf[33] = 0;
@@ -3029,7 +3016,65 @@ get_names()
       strcpy (roster[a], dumm);
       fgets (roster[a], 10, FP);
       fclose(FP);
-    } */
+    }
+  return 0;
+}
+
+int
+get_nine()
+{
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50);
+
+  slate = SDL_CreateWindow("factor",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
+  chalk = SDL_GetWindowSurface(slate);
+
+  SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
+  SDL_SetRenderDrawColor(rends, 255,255,255,255);
+  SDL_RenderClear(rends);
+  SDL_RenderPresent(rends);
+  SDL_UpdateWindowSurface(slate);
+
+  struct SDL_Rect tile[1000];
+  k = 0;
+  int b = 0;
+  for (c = 0;  c < 17; c++)
+    {
+      for (b = 0; b < 45;  b++)
+        {
+          tile[b+c*45].x = (b * 30);
+          tile[b+c*45].y = c * 44;
+        }
+    }
+    
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "ENTER 9 DIGITS (No zeros)", red);
+    
+  SDL_BlitSurface(scratch, NULL, chalk, &tile[230]);
+  SDL_UpdateWindowSurface(slate);
+        
+  int a = 325;
+  int letter = 0;
+
+  while(k < 9)
+    {
+      while(1)
+        {
+          letter = get_digit();
+          if((letter > 0) && (letter < 10)) break;
+//          if(letter > 0) break;
+        }    
+        
+      factor[k] = (char) letter+48;
+      factor[k+1] = 0;
+
+      scratch = TTF_RenderText_Solid(fntVeraMono50, &factor[k], red);
+      SDL_BlitSurface(scratch, NULL, chalk, &tile[a]);
+      if (a < 675) {a++;}
+          
+      SDL_UpdateWindowSurface(slate);
+      k++;
+    }
+
+  SDL_DestroyWindow(slate);
   return 0;
 }
 
@@ -3039,6 +3084,8 @@ handicap()
   int a = 0;
   int operation = 0;
   e = select_board_page();
+  if(panic == 1) return 0;
+
   a = handicapenterpage();
   operation = handicapoppage();
   
@@ -3049,8 +3096,7 @@ handicap()
 
   for (e = 1;  e < 41;  e++){ hndicap[e] = (char)(addpoints[e] + 48);}
 
-// TODO: Make this work in Windows.
-/*   if (class == 1) FP = fopen("/usr/local/com/class1/settings/addpoints", "w");
+  if (class == 1) FP = fopen("/usr/local/com/class1/settings/addpoints", "w");
   if (class == 2) FP = fopen("/usr/local/com/class2/settings/addpoints", "w");
   if (class == 3) FP = fopen("/usr/local/com/class3/settings/addpoints", "w");
   if (class == 4) FP = fopen("/usr/local/com/class4/settings/addpoints", "w");
@@ -3061,11 +3107,11 @@ handicap()
   if (class == 9) FP = fopen("/usr/local/com/class9/settings/addpoints", "w");
 
   fputs(hndicap, FP);
-  fclose(FP); */
+  fclose(FP);
 
   for (e = 1;  e < 41;  e++) hndicap[e] = (char)(subpoints[e] + 48);
 
-/*   if (class == 1) FP = fopen("/usr/local/com/class1/settings/subpoints", "w");
+  if (class == 1) FP = fopen("/usr/local/com/class1/settings/subpoints", "w");
   if (class == 2) FP = fopen("/usr/local/com/class2/settings/subpoints", "w");
   if (class == 3) FP = fopen("/usr/local/com/class3/settings/subpoints", "w");
   if (class == 4) FP = fopen("/usr/local/com/class4/settings/subpoints", "w");
@@ -3076,11 +3122,11 @@ handicap()
   if (class == 9) FP = fopen("/usr/local/com/class9/settings/subpoints", "w");
 
   fputs(hndicap, FP);
-  fclose(FP); */
+  fclose(FP);
   
   for (e = 1;  e < 41;  e++) hndicap[e] = (char)(mulpoints[e] + 48);
 
-/*   if (class == 1) FP = fopen("/usr/local/com/class1/settings/mulpoints", "w");
+  if (class == 1) FP = fopen("/usr/local/com/class1/settings/mulpoints", "w");
   if (class == 2) FP = fopen("/usr/local/com/class2/settings/mulpoints", "w");
   if (class == 3) FP = fopen("/usr/local/com/class3/settings/mulpoints", "w");
   if (class == 4) FP = fopen("/usr/local/com/class4/settings/mulpoints", "w");
@@ -3091,11 +3137,11 @@ handicap()
   if (class == 9) FP = fopen("/usr/local/com/class9/settings/mulpoints", "w");
 
   fputs(hndicap, FP);
-  fclose(FP); */
+  fclose(FP);
   
   for (e = 1;  e < 41;  e++) hndicap[e] = (char)(divpoints[e] + 48);
 
-/*   if (class == 1) FP = fopen("/usr/local/com/class1/settings/divpoints", "w");
+  if (class == 1) FP = fopen("/usr/local/com/class1/settings/divpoints", "w");
   if (class == 2) FP = fopen("/usr/local/com/class2/settings/divpoints", "w");
   if (class == 3) FP = fopen("/usr/local/com/class3/settings/divpoints", "w");
   if (class == 4) FP = fopen("/usr/local/com/class4/settings/divpoints", "w");
@@ -3106,7 +3152,7 @@ handicap()
   if (class == 9) FP = fopen("/usr/local/com/class9/settings/divpoints", "w");
 
   fputs(hndicap, FP);
-  fclose(FP); */
+  fclose(FP);
   return 0;
 }
 
@@ -3114,7 +3160,7 @@ int
 handicapenterpage()
 {
   slate = SDL_CreateWindow("point",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
 
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
@@ -3122,7 +3168,7 @@ handicapenterpage()
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
 
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
   struct SDL_Rect slots[3];
     
      slots[0].x = 0;
@@ -3131,14 +3177,14 @@ handicapenterpage()
      slots[1].x = 0;
      slots[1].y = 395;
     
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono50, "          ENTER HANDICAP", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "          ENTER HANDICAP", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
   SDL_UpdateWindowSurface(slate);
 
   int letter = 0;
   while(1)
     {
-      letter = get_char();
+      letter = get_digit() + 48;
       if((letter > 48) && (letter < 58)) break;
     }    
                    
@@ -3147,8 +3193,8 @@ handicapenterpage()
   letter = letter - 48;
   proxy[1] = 0;
   
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
-  SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate);           
 
   SDL_DestroyWindow(slate);
@@ -3158,10 +3204,10 @@ handicapenterpage()
 int
 handicapoppage()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
   
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -3188,174 +3234,31 @@ handicapoppage()
      slots[5].x = 0;
      slots[5].y = 560;
         
-     SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono50, "      ARE WE TALKING:", black);
-     SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+     scratch  = TTF_RenderText_Solid(fntVeraMono50, "      ARE WE TALKING:", black);
+     SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
              
-     SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono50, "            1 - ADDITION?", black);
-     SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+     scratch = TTF_RenderText_Solid(fntVeraMono50, "            1 - ADDITION?", black);
+     SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
              
-     SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono50, "            2 - SUBTRACTION?", black);
-     SDL_BlitSurface(line2, NULL, chalk, &slots[2]);
+     scratch = TTF_RenderText_Solid(fntVeraMono50, "            2 - SUBTRACTION?", black);
+     SDL_BlitSurface(scratch, NULL, chalk, &slots[2]);
              
-     SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono50, "            3 - MULTIPLICATION?", black);
-     SDL_BlitSurface(line3, NULL, chalk, &slots[3]);
+     scratch = TTF_RenderText_Solid(fntVeraMono50, "            3 - MULTIPLICATION?", black);
+     SDL_BlitSurface(scratch, NULL, chalk, &slots[3]);
             
-     SDL_Surface *line4 = TTF_RenderText_Solid(fntVeraMono50, "            4 - DIVISION?", black);
-     SDL_BlitSurface(line4, NULL, chalk, &slots[4]);
+     scratch = TTF_RenderText_Solid(fntVeraMono50, "            4 - DIVISION?", black);
+     SDL_BlitSurface(scratch, NULL, chalk, &slots[4]);
            
      SDL_UpdateWindowSurface(slate); 
         
-     int option = 0;
-       
-     SDL_Event event;
-     
-     while(1)
-       {
-         SDL_PollEvent(&event);    
-         if (event.type == SDL_KEYDOWN)
-           {
-             switch(event.key.keysym.sym)
-                 {
-                   case SDLK_1:
-                   option = 1;  
-   SDL_DestroyWindow(slate);
-                   return option;
-                   break;
-                  
-                   case SDLK_2:
-                   option = 2;  
-   SDL_DestroyWindow(slate);
-                   return option;
-                   break;
-                  
-                   case SDLK_3:
-                   option = 3;
-   SDL_DestroyWindow(slate);
-                   return option;  
-                   break;
-                  
-                   case SDLK_4:
-                   option = 4;
-   SDL_DestroyWindow(slate);
-                   return option;  
-                   break;
-                   
-                   case SDLK_ESCAPE:
-                   double_check();
-                   break;
-                  
-                   case SDLK_RETURN:
-   SDL_DestroyWindow(slate);
-                   return option;
-                   break;
-                 }
-           }
-       }
+  while(1)
+    {
+      option = get_digit();
+      if((option > 0) && (option < 5)) break;
+    }    
+
    SDL_DestroyWindow(slate);
    return option;
-}
-
-int
-get_ten()
-{
-   TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50);
-
-  slate = SDL_CreateWindow("factor",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
-
-  SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
-  SDL_SetRenderDrawColor(rends, 255,255,255,255);
-  SDL_RenderClear(rends);
-  SDL_RenderPresent(rends);
-  SDL_UpdateWindowSurface(slate);
-
-  struct SDL_Rect tile[1000];
-  k = 0;
-  int b = 0;
-  for (c = 0;  c < 17; c++)
-    {
-      for (b = 0; b < 45;  b++)
-        {
-          tile[b+c*45].x = (b * 30);
-          tile[b+c*45].y = c * 44;
-        }
-    }
-    
-   SDL_Surface *line = TTF_RenderText_Solid(fntVeraMono50, "ENTER 9 DIGITS (No zeros)", red);
-    
-   SDL_BlitSurface(line, NULL, chalk, &tile[230]);
-   SDL_UpdateWindowSurface(slate);
-        
-   int a = 325;
-   int letter = 0;
-   SDL_Event event;
-         
-   while(1)
-     {
-       SDL_WaitEvent(&event);   
-       if (event.type == SDL_KEYDOWN)
-         {
-           
-           switch(event.key.keysym.sym)
-             {
-                case SDLK_1:
-                  letter =1;
-                  break;
-                   
-                case SDLK_2:
-                  letter =2;
-                  break;
-                   
-                case SDLK_3:
-                  letter = 3;
-                  break;
-                   
-                case SDLK_4:
-                  letter =4;
-                  break;
-                   
-                case SDLK_5:
-                  letter =5;
-                  break;
-                   
-                case SDLK_6:
-                  letter =6;
-                  break;
-                   
-                case SDLK_7:
-                  letter =7;
-                  break;
-                   
-                case SDLK_8:
-                  letter =8;
-                  break;
-                   
-                case SDLK_9:
-                  letter =9;
-                  break;
-
-                default:
-                  letter = 0;
-             }
-           if (letter > 0)
-             {
-               factor[k] = (char) letter+48;
-               factor[k+1] = 0;
-               if (k > 8)
-                  {
-                     break;
-                  }
-               SDL_Surface *line = TTF_RenderText_Solid(fntVeraMono50, &factor[k], red);
-               SDL_BlitSurface(line, NULL, chalk, &tile[a]);
-               if (a < 675) {a++;}
-               SDL_UpdateWindowSurface(slate);
-               k++;
-             }
-           if (k > 8) break;
-         }
-     }
-  SDL_DestroyWindow(slate);
-  return 0;
 }
 
 int
@@ -3367,10 +3270,9 @@ main(int ARGC, char *ARGV[])
   TTF_Init();   
 
   /*  How many keyboards are in the network?  */
-// TODO: Make this work in Windows.
-/*   FP = fopen("/usr/local/etc/net_size", "r");
+  FP = fopen("/usr/local/etc/net_size", "r");
   fgets(net_buffer, 2, FP);
-  fclose(FP); */
+  fclose(FP);
   net_size = (10 * ((int)net_buffer[0]-48));
 
   if(net_size == 20)
@@ -3879,9 +3781,8 @@ main(int ARGC, char *ARGV[])
    {
       /*  These download the lists of numbers from which the program 
           randomly draws to create the math problems.  */
-
-// TODO: Make this work in Windows.
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/terma", "r");
+        
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/terma", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/terma", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/terma", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/terma", "r");
@@ -3891,10 +3792,10 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/terma", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/terma", "r");
       fgets(terma_buffer, 10, FP);
-      fclose(FP); */
+      fclose(FP);
       strcpy(terma, terma_buffer);
       
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/termb", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/termb", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/termb", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/termb", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/termb", "r");
@@ -3904,11 +3805,11 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/termb", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/termb", "r");
       fgets(termb_buffer, 10, FP);
-      fclose(FP); */
+      fclose(FP);
       strcpy(termb, termb_buffer);
 
       /*  Download name of the teacher for this class  */
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/names/teacher", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/names/teacher", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/names/teacher", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/names/teacher", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/names/teacher", "r");
@@ -3918,10 +3819,10 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/names/teacher", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/names/teacher", "r");
       fgets(teacher, 15, FP);
-      fclose(FP); */
+      fclose(FP);
       
       /*  Get the score needed to win math games  */
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/win_score", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/win_score", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/win_score", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/win_score", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/win_score", "r");
@@ -3931,7 +3832,7 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/win_score", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/win_score", "r");
       fgets(ww, 2, FP);
-      fclose(FP); */
+      fclose(FP);
       
       if(strlen(ww) == 0)
         {
@@ -3944,7 +3845,7 @@ main(int ARGC, char *ARGV[])
       
       /*  Download a list showing what typing practice line each student is
           working on.  */
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/type_line", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/type_line", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/type_line", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/type_line", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/type_line", "r");
@@ -3954,17 +3855,17 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/type_line", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/type_line", "r");
       fgets(type_line, 41, FP);
-      fclose(FP); */
+      fclose(FP);
          
       /*  Download system password  */
-/*       FP = fopen("/usr/local/etc/pass", "r");
+      FP = fopen("/usr/local/etc/pass", "r");
       fgets(pass, 5, FP);
-      fclose(FP); */
+      fclose(FP);
         
       /*  These sections download the handicaps for each kind of math 
           operation  */
 
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/addpoints", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/addpoints", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/addpoints", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/addpoints", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/addpoints", "r");
@@ -3974,13 +3875,13 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/addpoints", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/addpoints", "r"); 
       fgets(hndicap, 42, FP);
-      fclose(FP); */
+      fclose(FP);
       for (e = 0;  e < 41;  e++)
         {
           addpoints[e] = (int)(hndicap[e]) - 48;
         }
          
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/subpoints", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/subpoints", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/subpoints", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/subpoints", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/subpoints", "r");
@@ -3990,13 +3891,13 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/subpoints", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/subpoints", "r");
       fgets(hndicap, 42, FP);
-      fclose(FP); */
+      fclose(FP);
       for (e = 0;  e < 41;  e++)
         {
           subpoints[e] = (int)(hndicap[e]) - 48;
         }
     
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/mulpoints", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/mulpoints", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/mulpoints", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/mulpoints", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/mulpoints", "r");
@@ -4006,13 +3907,13 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/mulpoints", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/mulpoints", "r");
       fgets(hndicap, 42, FP);
-      fclose(FP); */
+      fclose(FP);
       for (e = 0;  e < 41;  e++)
         {
           mulpoints[e] = (int)(hndicap[e]) - 48;
         }
         
-/*       if (class == 1) FP = fopen("/usr/local/com/class1/settings/divpoints", "r");
+      if (class == 1) FP = fopen("/usr/local/com/class1/settings/divpoints", "r");
       if (class == 2) FP = fopen("/usr/local/com/class2/settings/divpoints", "r");
       if (class == 3) FP = fopen("/usr/local/com/class3/settings/divpoints", "r");
       if (class == 4) FP = fopen("/usr/local/com/class4/settings/divpoints", "r");
@@ -4022,7 +3923,7 @@ main(int ARGC, char *ARGV[])
       if (class == 8) FP = fopen("/usr/local/com/class8/settings/divpoints", "r");
       if (class == 9) FP = fopen("/usr/local/com/class9/settings/divpoints", "r");
       fgets(hndicap, 42, FP);
-      fclose(FP); */
+      fclose(FP);
       for (e = 0;  e < 41;  e++)
         {
           divpoints[e] = (int)(hndicap[e]) - 48;
@@ -4049,7 +3950,7 @@ main(int ARGC, char *ARGV[])
         }
         
       /*  Eliminate Division by Zero  */
-      for (a = 0; a < 10; a++)
+      for (a = 0; a < 9; a++)
         {
           if (t1[a] == 0) t1[a] = 1;
           if (t2[a] == 0) t2[a] = 1;
@@ -4058,7 +3959,7 @@ main(int ARGC, char *ARGV[])
       /*  Clear Word Processor Files  */
       for (e = 0; e < 41; e++)
         {
-          for (b = 0; b < 5001; b++) comp[e][b] = 0;
+          for (b = 0; b < 5000; b++) comp[e][b] = 0;
         }
       b = 0;
         
@@ -4100,13 +4001,11 @@ main(int ARGC, char *ARGV[])
 int
 make_add_prob()
 { 
-  int a = t1[random_num()];
-  int b = t2[random_num()];
   advance[e] = 0;
   stuans[e] = 0;
-  addend1[e] = t1[a];
-  addend2[e] = t2[b];
-  answer[e] = t1[a] + t2[b]; 
+  addend1[e] = t1[random_num()];
+  addend2[e] = t2[random_num()];
+  answer[e] = addend1[e] + addend2[e]; 
   return 0;
 }
 
@@ -4157,7 +4056,6 @@ menu()
   options = SDL_GetWindowSurface(choices);
   SDL_Renderer *rendc = SDL_CreateRenderer(choices, -1,SDL_RENDERER_SOFTWARE);
 
-
   SDL_SetRenderDrawColor(rendc, 255,255,255,255);
   SDL_RenderClear(rendc);
   SDL_RenderPresent(rendc);
@@ -4165,7 +4063,7 @@ menu()
      
   SDL_Event event;
       
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 30 );
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30 );
      
   struct SDL_Rect tile[25];
        
@@ -4269,80 +4167,81 @@ menu()
   tile[24].y = 670;
   tile[24].h = 30;
      
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono30, teacher, red);
-  SDL_BlitSurface(line0, NULL, options, &tile[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, teacher, red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[0]);
    
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono30, "MATH", red);
-  SDL_BlitSurface(line1, NULL, options, &tile[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "MATH", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[1]);
    
-  SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono30, "A - Division", red);
-  SDL_BlitSurface(line2, NULL, options, &tile[2]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "A - Division", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[2]);
     
-  SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono30, "B - Multiplication", red);
-  SDL_BlitSurface(line3, NULL, options, &tile[3]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "B - Multiplication", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[3]);
     
-  SDL_Surface *line4 = TTF_RenderText_Solid(fntVeraMono30, "C - Subtraction", red);
-  SDL_BlitSurface(line4, NULL, options, &tile[4]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "C - Subtraction", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[4]);
     
-  SDL_Surface *line5 = TTF_RenderText_Solid(fntVeraMono30, "D - Addition", red);
-  SDL_BlitSurface(line5, NULL, options, &tile[5]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "D - Addition", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[5]);
    
-  SDL_Surface *line6 = TTF_RenderText_Solid(fntVeraMono30, "E - Check Your Math", red);
-  SDL_BlitSurface(line6, NULL, options, &tile[6]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "E - Check Your Math", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[6]);
     
-  SDL_Surface *line7 = TTF_RenderText_Solid(fntVeraMono30, "", red);
-  SDL_BlitSurface(line7, NULL, options, &tile[7]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[7]);
     
-  SDL_Surface *line8 = TTF_RenderText_Solid(fntVeraMono30, "LANGUAGE", green);
-  SDL_BlitSurface(line8, NULL, options, &tile[8]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "LANGUAGE", green);
+  SDL_BlitSurface(scratch, NULL, options, &tile[8]);
     
-  SDL_Surface *line9 = TTF_RenderText_Solid(fntVeraMono30, "F - Keyboarding", green);
-  SDL_BlitSurface(line9, NULL, options, &tile[9]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "F - Keyboarding", green);
+  SDL_BlitSurface(scratch, NULL, options, &tile[9]);
     
-  SDL_Surface *line10 = TTF_RenderText_Solid(fntVeraMono30, "G - Word Processing", green);
-  SDL_BlitSurface(line10, NULL, options, &tile[10]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "G - Word Processing", green);
+  SDL_BlitSurface(scratch, NULL, options, &tile[10]);
     
-  SDL_Surface *line11 = TTF_RenderText_Solid(fntVeraMono30, "", red);
-  SDL_BlitSurface(line11, NULL, options, &tile[11]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "", red);
+  SDL_BlitSurface(scratch, NULL, options, &tile[11]);
     
-  SDL_Surface *line12 = TTF_RenderText_Solid(fntVeraMono30, "MANAGEMENT", black);
-  SDL_BlitSurface(line12, NULL, options, &tile[12]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "MANAGEMENT", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[12]);
     
-  SDL_Surface *line13 = TTF_RenderText_Solid(fntVeraMono30, "H - Math Facts Handicaps", black);
-  SDL_BlitSurface(line13, NULL, options, &tile[13]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "H - Math Facts Handicaps", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[13]);
    
-  SDL_Surface *line14 = TTF_RenderText_Solid(fntVeraMono30, "I - Set Winning Score", black);
-  SDL_BlitSurface(line14, NULL, options, &tile[14]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "I - Set Winning Score", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[14]);
     
-  SDL_Surface *line15 = TTF_RenderText_Solid(fntVeraMono30, "J - First Multiplication Factor", black);
-  SDL_BlitSurface(line15, NULL, options, &tile[15]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "J - First Multiplication Factor", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[15]);
     
-  SDL_Surface *line16 = TTF_RenderText_Solid(fntVeraMono30, "K - Second Multiplication Factor", black);
-  SDL_BlitSurface(line16, NULL, options, &tile[16]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "K - Second Multiplication Factor", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[16]);
   
-  SDL_Surface *line17 = TTF_RenderText_Solid(fntVeraMono30, "L - Set One Student's Typing Line", black);
-  SDL_BlitSurface(line17, NULL, options, &tile[17]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "L - Set One Student's Typing Line", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[17]);
     
-  SDL_Surface *line18 = TTF_RenderText_Solid(fntVeraMono30, "M - Set Back All Typing Lines", black);
-  SDL_BlitSurface(line18, NULL, options, &tile[18]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "M - Set Back All Typing Lines", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[18]);
     
-  SDL_Surface *line19 = TTF_RenderText_Solid(fntVeraMono30, "N - Erase All Student Writing", black);
-  SDL_BlitSurface(line19, NULL, options, &tile[19]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "N - Erase All Student Writing", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[19]);
     
-  SDL_Surface *line20 = TTF_RenderText_Solid(fntVeraMono30, "O - Print One Student's Writing", black);
-  SDL_BlitSurface(line20, NULL, options, &tile[20]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "O - Print One Student's Writing", black);
+  SDL_BlitSurface(scratch
+, NULL, options, &tile[20]);
    
-  SDL_Surface *line21 = TTF_RenderText_Solid(fntVeraMono30, "P - Print All Students' Writing", black);
-  SDL_BlitSurface(line21, NULL, options, &tile[21]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "P - Print All Students' Writing", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[21]);
    
-  SDL_Surface *line22 = TTF_RenderText_Solid(fntVeraMono30, "Q - Read Roster", black);
-  SDL_BlitSurface(line22, NULL, options, &tile[22]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "Q - Read Roster", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[22]);
     
-  SDL_Surface *line23 = TTF_RenderText_Solid(fntVeraMono30, "R - Change Roster", black);
-  SDL_BlitSurface(line23, NULL, options, &tile[23]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "R - Change Roster", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[23]);
          
-   SDL_Surface *line24 = TTF_RenderText_Solid(fntVeraMono30, "S - Change Classname", black);
-  SDL_BlitSurface(line24, NULL, options, &tile[24]);
+  scratch = TTF_RenderText_Solid(fntVeraMono30, "S - Change Classname", black);
+  SDL_BlitSurface(scratch, NULL, options, &tile[24]);
          
   SDL_UpdateWindowSurface(choices);
     
@@ -4488,7 +4387,7 @@ menu()
                     panic = 0;
                     goto starthere;
                   }
-                get_ten();
+                get_nine();
                 for (b = 0; b < 9; b++)
                    { 
                      t1[b] = (int)factor[b];
@@ -4496,8 +4395,7 @@ menu()
                      terma[b] = (char)(a);  
                    } 
                 
-// TODO: Make this work in Windows.
-/*                 if (class == 1) FP = fopen("/usr/local/com/class1/settings/terma", "w");
+                if (class == 1) FP = fopen("/usr/local/com/class1/settings/terma", "w");
                 if (class == 2) FP = fopen("/usr/local/com/class2/settings/terma", "w");
                 if (class == 3) FP = fopen("/usr/local/com/class3/settings/terma", "w");
                 if (class == 4) FP = fopen("/usr/local/com/class4/settings/terma", "w");
@@ -4508,7 +4406,7 @@ menu()
                 if (class == 9) FP = fopen("/usr/local/com/class9/settings/terma", "w");
                  
                 fputs(terma, FP);
-                fclose(FP); */
+                fclose(FP);
                 for (b = 0; b < 9; b++)
                    {
                      t1[b] = t1[b] - 48;
@@ -4518,7 +4416,7 @@ menu()
                 goto starthere;
                 break;
                   
-             /*  SET SECOND FACTO  RS  */
+             /*  SET SECOND FACTORS  */
              case SDLK_k:
                 repeat = 0;
                 SDL_DestroyWindow(choices);
@@ -4528,14 +4426,14 @@ menu()
                     panic = 0;
                     goto starthere;
                   }
-                 get_ten();
+                get_nine();
                 for (b = 0; b < 9; b++)
                   {
                     t2[b] = (int)factor[b];
                     a = t2[b];
                     termb[b] = (char)(a);
                   }  
-/*                 if (class == 1) FP = fopen("/usr/local/com/class1/settings/termb", "w");
+                if (class == 1) FP = fopen("/usr/local/com/class1/settings/termb", "w");
                 if (class == 2) FP = fopen("/usr/local/com/class2/settings/termb", "w");
                 if (class == 3) FP = fopen("/usr/local/com/class3/settings/termb", "w");
                 if (class == 4) FP = fopen("/usr/local/com/class4/settings/termb", "w");
@@ -4546,7 +4444,7 @@ menu()
                 if (class == 9) FP = fopen("/usr/local/com/class9/settings/termb", "w");
                 
                 fputs(termb, FP);
-                fclose(FP); */
+                fclose(FP);
                 for (b = 0; b < 9; b++)
                    {
                      t2[b] = t2[b] - 48;
@@ -4604,7 +4502,7 @@ menu()
                 
              /*  PRINT ONE STUDENT'S WRITING  */
              case SDLK_o:
-                lengthflag = 0;
+                length_flag = 0;
                 repeat = 0;
                 SDL_DestroyWindow(choices);
                 select_board_page();
@@ -4619,7 +4517,7 @@ menu()
                  
              /*  PRINT ALL STUDENTS' WRITING  */
              case SDLK_p:
-                lengthflag = 1;
+                length_flag = 1;
                 repeat = 0;
                 SDL_DestroyWindow(choices);
                 for (e = 0;  e < net_size;  e++)
@@ -4658,7 +4556,7 @@ menu()
              for (e = 1; e < 27; e++)
                {
                  strcpy (Buf, "");
-/*                  if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
+                 if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
                  if (class == 2) strcpy (Buf, "/usr/local/com/class2/names/name");
                  if (class == 3) strcpy (Buf, "/usr/local/com/class3/names/name");
                  if (class == 4) strcpy (Buf, "/usr/local/com/class4/names/name");
@@ -4672,16 +4570,16 @@ menu()
                  Buf[32] = e + 96;
                  Buf[33] = 0;
                   
-/*                  FP = fopen (Buf, "w");
+                 FP = fopen (Buf, "w");
                  fputs (roster[e], FP);
-                 fclose (FP); */
+                 fclose (FP);
                }
 
                /* SAVE LAST 14 NAMES */
              for (e = 27; e < 41; e++)
                {
                  strcpy (Buf, "");
-/*                  if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
+                 if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
                  if (class == 2) strcpy (Buf, "/usr/local/com/class2/names/name");
                  if (class == 3) strcpy (Buf, "/usr/local/com/class3/names/name");
                  if (class == 4) strcpy (Buf, "/usr/local/com/class4/names/name");
@@ -4696,7 +4594,7 @@ menu()
                   
                  FP = fopen (Buf, "w");
                  fputs (roster[e], FP);
-                 fclose (FP); */
+                 fclose (FP);
                }
 
              goto starthere;
@@ -4788,11 +4686,11 @@ menu()
 int
 message(e, tt)
 {
-   TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+   TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
 
       {
-         ostraca = TTF_RenderText_Solid(fntVeraMono50, ttext[tt], hue[e]);
-         SDL_BlitSurface(ostraca, NULL, chalk, &line[e]);
+         scratch = TTF_RenderText_Solid(fntVeraMono50, ttext[tt], hue[e]);
+         SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
       }
 
    return 0;
@@ -4802,13 +4700,13 @@ int
 multiply()
 {
   char a;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40 );
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40 );
 
                       /* OPEN EMPTY WHITE WINDOW. */
 
   slate = SDL_CreateWindow("mul",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -4835,9 +4733,9 @@ multiply()
 
       for (c = 0; c < 20; c++)
         {
-           if(net_size==40)ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-           else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-           SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+           if(net_size==40)scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+           else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+           SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
         }
       placeflag[e] = 1;
     }
@@ -4865,10 +4763,10 @@ multiply()
                   last_line[e][11] = ' ';
                   last_line[e][12] = ' ';
                    
-                  if(net_size==40) lin1 = TTF_RenderText_Solid(fntVeraMono33, "X", white);
-                  else lin1 = TTF_RenderText_Solid(fntVeraMono40, "X", white);
-                  SDL_BlitSurface(lin1, NULL, chalk, &tilem[e][11]);
-                  SDL_BlitSurface(lin1, NULL, chalk, &tilem[e][12]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, "X", white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, "X", white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][12]);
                   SDL_UpdateWindowSurface(slate);
                 }
                 
@@ -4894,9 +4792,9 @@ multiply()
                    last_line[e][11] = (int) a;
                    placeflag[e] = 2;
                   
-                   if(net_size==40)lettr = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
-                   else lettr = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-                   SDL_BlitSurface(lettr, NULL, chalk, &tilem[e][11]);
+                   if(net_size==40)scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                    SDL_UpdateWindowSurface(slate);
                   
                    continue;
@@ -4909,9 +4807,9 @@ multiply()
                    last_line[e][12] = (int) a;
                    stuans[e] = 10 * stuans[e] + (a - 48);
                     
-                   if(net_size==40) lettr = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);             
-                   else lettr = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);             
-                   SDL_BlitSurface(lettr, NULL, chalk, &tilem[e][12]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);             
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);             
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][12]);
                    SDL_UpdateWindowSurface(slate);
                    
                    stop[e] = 1;
@@ -4926,20 +4824,20 @@ multiply()
             { 
               for (c = 0; c < 20; c++)
                 {
-                  if(net_size==40)hogwash = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
-                  else hogwash = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
-                  SDL_BlitSurface(hogwash, NULL, chalk, &tilem[e][c]);
+                  if(net_size==40)scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                 }
               SDL_UpdateWindowSurface(slate);
                  
               advance[e] = 1;
               score[e] = score[e] + mulpoints[e + 1];
-              onesregister = score[e] % 10;
-              tensregister = score[e] / 10;
+              ones_register = score[e] % 10;
+              tens_register = score[e] / 10;
               last_line[e][11] = 32;
               last_line[e][12] = 32;
-              last_line[e][16] = (char) tensregister + 48;
-              last_line[e][17] = (char) onesregister + 48;
+              last_line[e][16] = (char) tens_register + 48;
+              last_line[e][17] = (char) ones_register + 48;
               if(last_line[e][16] == 48){last_line[e][16] = 32;}
                   
               if(score[e] < win_score)
@@ -4956,9 +4854,9 @@ multiply()
                    
                   for (c = 0; c < 20; c++)
                     {
-                      if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-                      else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-                      SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+                      if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+                      else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+                      SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                     }
                   placeflag[e] = 1;
                   SDL_UpdateWindowSurface(slate);
@@ -4983,25 +4881,25 @@ multiply()
               goofed[e] = 1;
               
               z[0] = last_line[e][11];
-              if(net_size==40) correction = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-              else correction = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-              SDL_BlitSurface(correction, NULL, chalk, &tilem[e][11]);
+              if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+              SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
               SDL_UpdateWindowSurface(slate);
               
               z[0] = last_line[e][12];
-              if(net_size==40)correction = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-              else correction = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-              SDL_BlitSurface(correction, NULL, chalk, &tilem[e][12]);
+              if(net_size==40)scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+              SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][12]);
               SDL_UpdateWindowSurface(slate);
                
               z[0] = 'X';
               last_line[e][11] = 'X';
               last_line[e][12] = 'X';
               
-              if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, "X" , black);
-              else ostraca = TTF_RenderText_Solid(fntVeraMono40, "X" , black);
-              SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][11]);
-              SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][12]);
+              if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, "X" , black);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, "X" , black);
+              SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
+              SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][12]);
               SDL_UpdateWindowSurface(slate);
             }
         }        
@@ -5013,12 +4911,14 @@ multiply()
 int
 opener()
 {
-	//  TODO: Make this work in Windows.
-/*   for(e = 0; e <net_size;  e++)
+  for(e = 0; e <net_size;  e++)
     {
       fz[e] = open(BUF[e], O_RDONLY);
+// TODO: Make this work in windows.
+#ifndef _WIN
       ioctl(fz[e], EVIOCGRAB);
-    } */
+#endif /* _WIN */
+    }
   return 0;
 }
 
@@ -5052,14 +4952,14 @@ if (comp[e-1][0] == 0) return 0;
   slots[2].x = 80;
   slots[2].y = 395;
   
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
             
                       /* PUT LINE LENGTH INTO INTEGER b. */
       
-  if (lengthflag == 0)
+  if (length_flag == 0)
     {
       slate = SDL_CreateWindow("hardcopy",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-      SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+      chalk = SDL_GetWindowSurface(slate);
       SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
       SDL_SetRenderDrawColor(rends, 255,255,255,255);
       SDL_RenderClear(rends);
@@ -5185,17 +5085,16 @@ if (comp[e-1][0] == 0) return 0;
       
     /* SAVE FORMATTED FILE AS 'output'. */
 
-// TODO: Make this work in Windows.
-/*   FP =  fopen("/usr/local/com/class1/files/output", "w");
+  FP =  fopen("/usr/local/com/class1/files/output", "w");
   for(b = 0; proof[b]!= 0; b++)
     {
       fputc(proof[b], FP);  
     }
-  fclose(FP); */
+  fclose(FP);
 
     /* GO PRINT output, THEN RETURN TO MENU. */
 
-//  system("lpr   /usr/local/com/class1/files/output");
+  system("lpr   /usr/local/com/class1/files/output");
   return 0;
 }
 
@@ -5203,11 +5102,11 @@ int
 process()
 {
   int b = 0;
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 30);
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40);
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30);
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
 
-  slate = SDL_CreateWindow("processor",0,0,1024,768,0);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  slate = SDL_CreateWindow("processor",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -5215,27 +5114,26 @@ process()
   SDL_UpdateWindowSurface(slate);
 
             /*  text_pos[] IS THE OFFSET FROM THE BEGINNING OF STUDENT COMPOSITION TO
-            THE FIRST LETTER OF DISPLAYED LINE (displayline[][]).  cursor[] IS THE 
+            THE FIRST LETTER OF DISPLAYED LINE (display_line[][]).  cursor[] IS THE 
             OFFSET FROM text_pos[] TO THE CURRENT CHARACTER.
 
             COPY OPENING LINES OF net_size STUDENTS TO THE SCREEN. */
-
   for (e = 0; e < net_size; e++)
     {
       cursor[e] = 0;
       for (a = 0; a < 20; a++)
        {
-         displayline[e][a] = comp[e][text_pos[e] + a];
+         display_line[e][a] = comp[e][text_pos[e] + a];
        }      
-          if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
-          else sym = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
-          SDL_BlitSurface(sym, NULL, chalk, &tile[e][0]);
+          if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
+          else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &tile[e][0]);
 
           for (b = 0; b < 20; b++)
             {
-              if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, &displayline[e][b] , hue[e]);
-              else sym = TTF_RenderText_Solid(fntVeraMono40, &displayline[e][b] , hue[e]);
-              SDL_BlitSurface(sym, NULL, chalk, &tile[e][b]);
+              if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &display_line[e][b] , hue[e]);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, &display_line[e][b] , hue[e]);
+              SDL_BlitSurface(scratch, NULL, chalk, &tile[e][b]);
             } 
     }   
 
@@ -5263,9 +5161,9 @@ process()
           
          if ((int)a == 129)   
            {
-             if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], white);
-             else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], white);
-              SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], white);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], white);
+              SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
               for (b = 4999; b > text_pos[e] + cursor[e]; b--)
                 {
@@ -5275,12 +5173,12 @@ process()
    
               for(b = 0; b < 20; b++)
                 {
-                  displayline[e][b] = comp[e][text_pos[e] + b];
+                  display_line[e][b] = comp[e][text_pos[e] + b];
                 }
               
-              if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], hue[e]);
-              else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], hue[e]);
-              SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+              if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], hue[e]);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], hue[e]);
+              SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
               SDL_UpdateWindowSurface(slate);
            
               continue;  
@@ -5290,9 +5188,9 @@ process()
      
          if (a == 127)
             {
-              if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], white);
-              else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], white);
-              SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+              if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], white);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], white);
+              SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
               for (a = text_pos[e] + cursor[e]; a < 4999; a++)
                 {
@@ -5300,12 +5198,12 @@ process()
                 }
               for (a = 0; a < 20; a++)
                 {
-                  displayline[e][a] = comp[e][text_pos[e] + a];
+                  display_line[e][a] = comp[e][text_pos[e] + a];
                 }
 
-              if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], hue[e]);
-              else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], hue[e]);
-              SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+              if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], hue[e]);
+              else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], hue[e]);
+              SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
               SDL_UpdateWindowSurface(slate);
 
               continue;  
@@ -5319,25 +5217,25 @@ process()
          
          if ((cursor[e] == 0) && (text_pos[e] > 0) && (a == 130))
            {
-             if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], white);
-             else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], white);
-             SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], white);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], white);
+             SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
              text_pos[e]--;
              for (b = 0; b < 20; b++)
                 {
-                  displayline[e][b] = comp[e][text_pos[e] + b];
+                  display_line[e][b] = comp[e][text_pos[e] + b];
                 } 
           
-             if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], hue[e]);
-             else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], hue[e]);
-             SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], hue[e]);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], hue[e]);
+             SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
              
              if(text_pos[e] == 0)
                {
-                 if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
-                 else sym = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
-                 SDL_BlitSurface(sym, NULL, chalk, tile[e]);
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
+                 SDL_BlitSurface(scratch, NULL, chalk, tile[e]);
                }
              SDL_UpdateWindowSurface(slate);
              
@@ -5354,19 +5252,19 @@ process()
                /* SCROLL TEXT TO LEFT IF AT END OF DISPLAYED LINE. */
              if (cursor[e] == 19)
                {
-                 if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], white);
-                 else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], white);
-                 SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], white);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], white);
+                 SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
                 
                  text_pos[e]++;
                  for (b = 0; b < 20; b++) 
                     {
-                      displayline[e][b] = comp[e][text_pos[e] + b];
+                      display_line[e][b] = comp[e][text_pos[e] + b];
                     }
                  
-                 if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, displayline[e], hue[e]);
-                 else sym = TTF_RenderText_Solid(fntVeraMono40, displayline[e], hue[e]);
-                 SDL_BlitSurface(sym, NULL, chalk, &line[e]);
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], hue[e]);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], hue[e]);
+                 SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
                  SDL_UpdateWindowSurface(slate);
                
                  continue;
@@ -5375,14 +5273,14 @@ process()
                /* MOVE CURSOR ONE SPACE TO RIGHT IF NOT AT END OF DISPLAYED LINE. */
              else
                {
-                 if(net_size==40) sym1 = TTF_RenderText_Solid(fntVeraMono30, "_", white);
-                 else sym1 = TTF_RenderText_Solid(fntVeraMono40, "_", white);
-                 SDL_BlitSurface(sym1, NULL, chalk, &tile[e][cursor[e]]);
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", white);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", white);
+                 SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                  cursor[e]++;
                  
-                 if(net_size==40) sym2 = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
-                 else sym2 = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
-                 SDL_BlitSurface(sym2, NULL, chalk, &tile[e][cursor[e]]);         
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
+                 SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);         
                  SDL_UpdateWindowSurface(slate);
            
                  continue;
@@ -5393,16 +5291,16 @@ process()
            
          if ((a == 130) && (cursor[e] > 0))
            {
-             z[0] = displayline[e][cursor[e]];              
+             z[0] = display_line[e][cursor[e]];              
 
-                 if(net_size==40) sym2 = TTF_RenderText_Solid(fntVeraMono30, "_", white);
-                 else sym2 = TTF_RenderText_Solid(fntVeraMono40, "_", white);
-                 SDL_BlitSurface(sym2, NULL, chalk, &tile[e][cursor[e]]);         
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", white);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", white);
+                 SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);         
 
              cursor[e]--;
-                 if(net_size==40) sym2 = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
-                 else sym2 = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
-                 SDL_BlitSurface(sym2, NULL, chalk, &tile[e][cursor[e]]);         
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
+                 SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);         
              SDL_UpdateWindowSurface(slate);             
              
              continue;
@@ -5412,27 +5310,27 @@ process()
 
          if ((a != 130) && (cursor[e] < 19))
            {
-             z[0] = displayline[e][cursor[e]];
-             if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, &z[0], white);
-             else sym = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-             SDL_BlitSurface(sym, NULL, chalk, &tile[e][cursor[e]]);
+             z[0] = display_line[e][cursor[e]];
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], white);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+             SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
 
-             if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, "_", white);
-             else sym = TTF_RenderText_Solid(fntVeraMono40, "_", white);
-             SDL_BlitSurface(sym, NULL, chalk, &tile[e][cursor[e]]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", white);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", white);
+             SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
              z[0] = a;
-             displayline[e][cursor[e]] = z[0];
+             display_line[e][cursor[e]] = z[0];
              comp[e][text_pos[e] + cursor[e]] = z[0];
 
-             if(net_size==40) sym = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
-             else sym = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-             SDL_BlitSurface(sym, NULL, chalk, &tile[e][cursor[e]]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &z[0], hue[e]);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+             SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
 
              cursor[e]++;
 
-             if(net_size==40) sym1 = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
-             else sym1 = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
-             SDL_BlitSurface(sym1, NULL, chalk, &tile[e][cursor[e]]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
+             SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
 
              SDL_UpdateWindowSurface(slate);
              
@@ -5443,38 +5341,38 @@ process()
 
          if (cursor[e] == 19)
            {
-             if(net_size==40) scratch5 = TTF_RenderText_Solid(fntVeraMono30, displayline[e], white);
-             else scratch5 = TTF_RenderText_Solid(fntVeraMono40, displayline[e], white);
-             SDL_BlitSurface(scratch5, NULL, chalk, &line[e]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], white);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], white);
+             SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
              SDL_UpdateWindowSurface(slate);
 
              z[0] = a;
-             displayline[e][cursor[e]] = z[0];
+             display_line[e][cursor[e]] = z[0];
              comp[e][text_pos[e] + cursor[e]] = z[0];
 
              text_pos[e]++;
 
              for (b = 0; b < 20; b++) 
                {
-                 displayline[e][b] = comp[e][text_pos[e] + b];
+                 display_line[e][b] = comp[e][text_pos[e] + b];
                }
                
-             if(net_size==40) scratch5 = TTF_RenderText_Solid(fntVeraMono30, displayline[e], hue[e]);
-             else scratch5 = TTF_RenderText_Solid(fntVeraMono40, displayline[e], hue[e]);
-             SDL_BlitSurface(scratch5, NULL, chalk, &line[e]);
+             if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, display_line[e], hue[e]);
+             else scratch = TTF_RenderText_Solid(fntVeraMono40, display_line[e], hue[e]);
+             SDL_BlitSurface(scratch, NULL, chalk, &line[e]);
 
-             if(displayline[e][19] == 0)
+             if(display_line[e][19] == 0)
                {
-                 if(net_size==40) scratch7 = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
-                 else scratch7 = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
-                 SDL_BlitSurface(scratch7, NULL, chalk, &tile[e][cursor[e]]);
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, "_", hue[e]);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, "_", hue[e]);
+                 SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                }
 
              else
                {
-                 if(net_size==40) scratch7 = TTF_RenderText_Solid(fntVeraMono30, &displayline[e][cursor[e]], hue[e]);
-                 else scratch7 = TTF_RenderText_Solid(fntVeraMono40, &displayline[e][cursor[e]], hue[e]);
-                 SDL_BlitSurface(scratch7, NULL, chalk, &tile[e][cursor[e]]);
+                 if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono30, &display_line[e][cursor[e]], hue[e]);
+                 else scratch = TTF_RenderText_Solid(fntVeraMono40, &display_line[e][cursor[e]], hue[e]);
+                 SDL_BlitSurface(scratch, NULL, chalk, &tile[e][cursor[e]]);
                }
            }
          SDL_UpdateWindowSurface(slate);
@@ -5487,19 +5385,20 @@ process()
 int
 random_num()
 {
-   a = 0;
+  retry:
   a = rand() / 230000000;
+  if(a > 8) goto retry;
   return a;
 }
 
 int
 roster_page()
 {
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 30);
-  TTF_Font  *fntVeraMono20 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 20);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 30);
+  TTF_Font  *fntVeraMono20 = TTF_OpenFont( ttf_vera_mono_path, 20);
 
   slate = SDL_CreateWindow("add",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface *chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -5528,8 +5427,8 @@ roster_page()
           }
      }
 
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono20, "               TYPE  ADD  SUB  MUL DIV                      TYPE  ADD  SUB  MUL  DIV", hue[e]);
-  SDL_BlitSurface(line0, NULL, chalk, slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono20, "               TYPE  ADD  SUB  MUL DIV                      TYPE  ADD  SUB  MUL  DIV", hue[e]);
+  SDL_BlitSurface(scratch, NULL, chalk, slots[0]);
   
   char ttline[4];
   ttline[3] = 0; 
@@ -5547,8 +5446,8 @@ roster_page()
   mpoints[1] = 0;
   for (e = 1; e < 21; e++)
     {  
-      SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono33, roster[e],  hue[e]);
-      SDL_BlitSurface(line1, NULL, chalk, slots[e]);
+      scratch = TTF_RenderText_Solid(fntVeraMono33, roster[e],  hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, slots[e]);
 
       ttline[0] = (char) ((tline[e-1] / 100) + 48);
       if(ttline[0] == '0') {ttline[0] = ' ';}
@@ -5563,55 +5462,95 @@ roster_page()
       mpoints[0] =  (char) mulpoints[e]+48;
       dpoints[0] =  (char) divpoints[e]+48;
       
-      SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono33, &ttline[0],  hue[e]);
-      SDL_BlitSurface(line2, NULL, chalk, &slots[e][5]);
+      scratch = TTF_RenderText_Solid(fntVeraMono33, &ttline[0],  hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, &slots[e][5]);
       
-      SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono33, &apoints[0],  hue[e]);
-      SDL_BlitSurface(line3, NULL, chalk, &slots[e][8]);
+      scratch = TTF_RenderText_Solid(fntVeraMono33, &apoints[0],  hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, &slots[e][8]);
 
-      SDL_Surface *line4 = TTF_RenderText_Solid(fntVeraMono33, &spoints[0],  hue[e]);
-      SDL_BlitSurface(line4, NULL, chalk, &slots[e][10]);
+      scratch = TTF_RenderText_Solid(fntVeraMono33, &spoints[0],  hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, &slots[e][10]);
       
-      SDL_Surface *line5 = TTF_RenderText_Solid(fntVeraMono33, &mpoints[0],  hue[e]);
-      SDL_BlitSurface(line5, NULL, chalk, &slots[e][12]);
+      scratch = TTF_RenderText_Solid(fntVeraMono33, &mpoints[0],  hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, &slots[e][12]);
     
-      SDL_Surface *line6 = TTF_RenderText_Solid(fntVeraMono33, &dpoints[0],  hue[e]);
-      SDL_BlitSurface(line6, NULL, chalk, &slots[e][14]);
+      scratch = TTF_RenderText_Solid(fntVeraMono33, &dpoints[0],  hue[e]);
+      SDL_BlitSurface(scratch, NULL, chalk, &slots[e][14]);
     }
 
-  for (e = 21; e < 41; e++)
-    {  
-      SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono33, roster[e],  hue[e]);
-      SDL_BlitSurface(line1, NULL, chalk, slots[e]);
+  if(net_size > 20)
+    {
+      for (e = 21; e < 31; e++)
+        {  
+          scratch = TTF_RenderText_Solid(fntVeraMono33, roster[e],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, slots[e]);
+          
+          ttline[0] = (char) ((tline[e-1] / 100) + 48);
+          if(ttline[0] == '0') {ttline[0] = ' ';}
+          
+          ttline[1] = (char) ((tline[e-1] % 100) / 10) + 48;
+          if((ttline[0] == ' ') & (ttline[1] == '0')) {ttline[1] = ' ';}
+          
+          ttline[2] = (char) (tline[e-1] % 10) + 48;
+            
+          apoints[0] =  (char) addpoints[e]+48;
+          spoints[0] =  (char) subpoints[e]+48;
+          mpoints[0] =  (char) mulpoints[e]+48;
+          dpoints[0] =  (char) divpoints[e]+48;
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &ttline[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][6]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &apoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][9]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &spoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][11]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &mpoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][13]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &dpoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][15]);
+        }
+    }
 
-      ttline[0] = (char) ((tline[e-1] / 100) + 48);
-      if(ttline[0] == '0') {ttline[0] = ' ';}
-       
-      ttline[1] = (char) ((tline[e-1] % 100) / 10) + 48;
-      if((ttline[0] == ' ') & (ttline[1] == '0')) {ttline[1] = ' ';}
-        
-      ttline[2] = (char) (tline[e-1] % 10) + 48;
-      
-      apoints[0] =  (char) addpoints[e]+48;
-      spoints[0] =  (char) subpoints[e-1]+48;
-      mpoints[0] =  (char) mulpoints[e-1]+48;
-      dpoints[0] =  (char) divpoints[e-1]+48;
-      
-      SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono33, &ttline[0],  hue[e]);
-      SDL_BlitSurface(line2, NULL, chalk, &slots[e][6]);
-      
-      SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono33, &apoints[0],  hue[e]);
-      SDL_BlitSurface(line3, NULL, chalk, &slots[e][9]);
-
-      SDL_Surface *line4 = TTF_RenderText_Solid(fntVeraMono33, &spoints[0],  hue[e]);
-      SDL_BlitSurface(line4, NULL, chalk, &slots[e][11]);
-      
-      SDL_Surface *line5 = TTF_RenderText_Solid(fntVeraMono33, &mpoints[0],  hue[e]);
-      SDL_BlitSurface(line5, NULL, chalk, &slots[e][13]);
-    
-      SDL_Surface *line6 = TTF_RenderText_Solid(fntVeraMono33, &dpoints[0],  hue[e]);
-      SDL_BlitSurface(line6, NULL, chalk, &slots[e][15]);
-   }
+  if(net_size > 30)
+    {
+      for (e = 31; e < 41; e++)
+        {  
+          scratch = TTF_RenderText_Solid(fntVeraMono33, roster[e],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, slots[e]);
+          
+          ttline[0] = (char) ((tline[e-1] / 100) + 48);
+          if(ttline[0] == '0') {ttline[0] = ' ';}
+          
+          ttline[1] = (char) ((tline[e-1] % 100) / 10) + 48;
+          if((ttline[0] == ' ') & (ttline[1] == '0')) {ttline[1] = ' ';}
+          
+          ttline[2] = (char) (tline[e-1] % 10) + 48;
+            
+          apoints[0] =  (char) addpoints[e]+48;
+          spoints[0] =  (char) subpoints[e]+48;
+          mpoints[0] =  (char) mulpoints[e]+48;
+          dpoints[0] =  (char) divpoints[e]+48;
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &ttline[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][6]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &apoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][9]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &spoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][11]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &mpoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][13]);
+          
+          scratch = TTF_RenderText_Solid(fntVeraMono33, &dpoints[0],  hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &slots[e][15]);
+        }
+    }
 
   SDL_UpdateWindowSurface(slate); 
   alpha();
@@ -5624,10 +5563,10 @@ security()
 {
   int a = 0;
   char s[5] = {0,0,0,0,0};
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 30);
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 30);
   
   SDL_Window*  slate = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
      
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
@@ -5644,8 +5583,8 @@ security()
   slots[1].y = 320;
   slots[1].h = 30;
     
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono40, "     ENTER YOUR PASSWORD", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "     ENTER YOUR PASSWORD", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
   SDL_UpdateWindowSurface(slate);
 
   s[0] = (char) get_digit() + 48;
@@ -5656,8 +5595,8 @@ security()
       return 0;
     }
 
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono40, "*", black);
-  SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "*", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate);
 
   s[1] = (char) get_digit() + 48;
@@ -5668,8 +5607,8 @@ security()
       return 0;
     }
 
-  SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono40, "**", black);
-  SDL_BlitSurface(line2, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "**", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate); 
 
   s[2] = (char) get_digit() + 48;
@@ -5680,8 +5619,8 @@ security()
       return 0;
     }
 
-  SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono40, "***", black);
-  SDL_BlitSurface(line3, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "***", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate); 
 
   s[3] = (char) get_digit() + 48;
@@ -5692,8 +5631,8 @@ security()
       return 0;
     }
 
-  SDL_Surface *line4 = TTF_RenderText_Solid(fntVeraMono40, "****", black);
-  SDL_BlitSurface(line4, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "****", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate); 
   alpha();
      
@@ -5713,49 +5652,64 @@ int
 select_board_page()
 {
   char proxy[3] = {0,0,0};
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
 
+  panic = 0;
   slate = SDL_CreateWindow("selectboard",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
      
-  struct SDL_Rect slots[2];
+  struct SDL_Rect slots[3];
       
   slots[0].x = 0;
   slots[0].y = 295;
       
   slots[1].x = 0;
   slots[1].y = 395;
+
+  slots[2].x = 0;
+  slots[2].y = 495;
         
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono50, "        WHICH KEYBOARD?", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "        WHICH KEYBOARD?", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
   SDL_UpdateWindowSurface(slate);
-     
-  onesregister = get_digit();
-  e = onesregister ;
-  proxy[0]= onesregister + 48;
+ 
+  ones_register = get_digit();
+  e = ones_register ;
+  proxy[0]= ones_register + 48;
    
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
-  SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate);
        
-  tensregister = get_digit();
-  if(tensregister == 10)
+  tens_register = get_digit();
+  if(tens_register == 10)
     {
       SDL_DestroyWindow(slate);
       return e - 1;
     }
-  e = 10 * e + tensregister;
-  proxy[1]= tensregister + 48;
+  e = 10 * e + tens_register;
+  proxy[1]= tens_register + 48;
        
-  SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
-  SDL_BlitSurface(line2, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate);
 
+  if(e > net_size)
+    {  
+      scratch = TTF_RenderText_Solid(fntVeraMono50, " YOU DON'T HAVE THAT MANY BOARDS!", black);
+      SDL_BlitSurface(scratch, NULL, chalk, &slots[2]);
+      SDL_UpdateWindowSurface(slate);
+      SDL_Delay(2000);
+      panic = 1;
+      SDL_DestroyWindow(slate);
+      return e - 1;
+    }
+ 
   alpha();
   SDL_DestroyWindow(slate);
   return e - 1;
@@ -5764,10 +5718,10 @@ select_board_page()
 int
 select_book()
 {
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40 );
     
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -5794,20 +5748,20 @@ select_book()
   slots[5].x = 0;
   slots[5].y = 560;
         
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono40, "      WHICH BOOK?", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "      WHICH BOOK?", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
              
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono40, "         1 - Text 1", black);
-  SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "         1 - Text 1", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
              
-  SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono40, "         2 - Text 2", black);
-  SDL_BlitSurface(line2, NULL, chalk, &slots[2]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "         2 - Text 2", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[2]);
              
-  SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono40, "         3 - Text 3", black);
-  SDL_BlitSurface(line3, NULL, chalk, &slots[3]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "         3 - Text 3", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[3]);
             
-  SDL_Surface *line4 = TTF_RenderText_Solid(fntVeraMono40, "         4 - Text 4", black);
-  SDL_BlitSurface(line4, NULL, chalk, &slots[4]);
+  scratch = TTF_RenderText_Solid(fntVeraMono40, "         4 - Text 4", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[4]);
            
   SDL_UpdateWindowSurface(slate); 
         
@@ -5815,11 +5769,10 @@ select_book()
      
   while(1)
     {
-      SDL_PollEvent(&event);    
+      SDL_WaitEvent(&event);    
       if (event.type == SDL_KEYDOWN)
         {
-// TODO: Make this work in Windows.
-/*           switch(event.key.keysym.sym)
+          switch(event.key.keysym.sym)
            {
              case SDLK_1:
              FP = fopen("/usr/local/etc/answerkeys/text1", "r");
@@ -5852,7 +5805,7 @@ select_book()
              SDL_DestroyWindow(slate);
              return 0;
              break;
-           } */
+           }
         }
     }
   SDL_DestroyWindow(slate);
@@ -5864,17 +5817,22 @@ select_line_page(e)
 {
   char proxy[4] = {0,0,0,0};
   e = select_board_page(e);
-  if(e > net_size) {return 0;}
+  if(e + 1 > net_size)
+    {
+      detente();
+      SDL_DestroyWindow(slate);
+      return 0;
+    }
 
   slate = SDL_CreateWindow("pickline",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
 
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
      
   struct SDL_Rect slots[2];
      
@@ -5884,34 +5842,34 @@ select_line_page(e)
      slots[1].x = 0;
      slots[1].y = 395;
      
-  SDL_Surface *line0 = TTF_RenderText_Solid(fntVeraMono50, "             WHICH LINE?", black);
-  SDL_BlitSurface(line0, NULL, chalk, &slots[0]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, "             WHICH LINE?", black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[0]);
   SDL_UpdateWindowSurface(slate);
      
-  onesregister = get_digit();
-  if((onesregister == 10)||(onesregister == 0))
+  ones_register = get_digit();
+  if((ones_register == 10)||(ones_register == 0))
     {
       SDL_DestroyWindow(slate);
       return 0;
     }
-  tline[e] = onesregister ;
-  proxy[0]= onesregister + 48;
+  tline[e] = ones_register ;
+  proxy[0]= ones_register + 48;
 
-  SDL_Surface *line1 = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
-  SDL_BlitSurface(line1, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate); 
      
-  tensregister = get_digit();
-  if(tensregister == 10)
+  tens_register = get_digit();
+  if(tens_register == 10)
     {
       SDL_DestroyWindow(slate);
       return 0;
     }
-  tline[e] = 10 * tline[e] + tensregister ;
-  proxy[1]= tensregister + 48;
+  tline[e] = 10 * tline[e] + tens_register ;
+  proxy[1]= tens_register + 48;
 
-  SDL_Surface *line2 = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
-  SDL_BlitSurface(line2, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate); 
       
   hundredsregister = get_digit();
@@ -5929,8 +5887,8 @@ select_line_page(e)
     }
   proxy[2]= hundredsregister + 48;
 
-  SDL_Surface *line3 = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
-  SDL_BlitSurface(line3, NULL, chalk, &slots[1]);
+  scratch = TTF_RenderText_Solid(fntVeraMono50, proxy, black);
+  SDL_BlitSurface(scratch, NULL, chalk, &slots[1]);
   SDL_UpdateWindowSurface(slate); 
   alpha();
   SDL_DestroyWindow(slate);
@@ -5940,8 +5898,8 @@ select_line_page(e)
 int
 splash_page()
 {
-  TTF_Font  *fntVeraMono90 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 90);
-  TTF_Font  *fntVeraMono35 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 35);
+  TTF_Font  *fntVeraMono90 = TTF_OpenFont( ttf_vera_mono_path, 90);
+  TTF_Font  *fntVeraMono35 = TTF_OpenFont( ttf_vera_mono_path, 35);
 
   SDL_Window*  window = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   SDL_Surface* display = SDL_GetWindowSurface(window);
@@ -6008,13 +5966,13 @@ int
 subtract()
 {
   char a;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 40);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
 
                           /* OPEN EMPTY WHITE WINDOW. */
 
   SDL_Window*  slate = SDL_CreateWindow("sub",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
   SDL_RenderClear(rends);
@@ -6032,10 +5990,10 @@ subtract()
       score[e]=0;
       make_sub_prob(e);
      
-      onesregister =  subtrahend[e] % 10;
-      tensregister = subtrahend[e] / 10;
-      last_line[e][2] =  onesregister + 48;
-      last_line[e][1] = (char) tensregister + 48;
+      ones_register =  subtrahend[e] % 10;
+      tens_register = subtrahend[e] / 10;
+      last_line[e][2] =  ones_register + 48;
+      last_line[e][1] = (char) tens_register + 48;
       last_line[e][4] = '-';
       last_line[e][6] = (char) minuend[e] + 48;
       last_line[e][8] = '=';
@@ -6044,9 +6002,9 @@ subtract()
      
       for (c = 0; c < 20; c++)
         {
-          if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-          else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-          SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+          if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+          else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+          SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
         }
     }
 
@@ -6070,9 +6028,9 @@ subtract()
                 {
                   goofed[e] = 0;
                   z[0] = last_line[e][11];
-                  if(net_size==40) lin1 = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-                  else lin1 = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-                  SDL_BlitSurface(lin1, NULL, chalk, &tilem[e][11]);
+                  if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+                  else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+                  SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                   SDL_UpdateWindowSurface(slate);
                 }
               else
@@ -6094,9 +6052,9 @@ subtract()
                z[0] = (int) a;
                last_line[e][11] = (int) a;
                
-               if(net_size==40) lettr = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
-               else lettr = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
-               SDL_BlitSurface(lettr, NULL, chalk, &tilem[e][11]);
+               if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], hue[e]);
+               else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], hue[e]);
+               SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                SDL_UpdateWindowSurface(slate);
 
                stop[e] = 1;
@@ -6107,19 +6065,19 @@ subtract()
                  { 
                    for (c = 0; c < 20; c++)
                       {
-                         if(net_size==40) hogwash = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
-                         else hogwash = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
-                         SDL_BlitSurface(hogwash, NULL, chalk, &tilem[e][c]);
+                         if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], white);
+                         else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], white);
+                         SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                       }
                    
                    SDL_UpdateWindowSurface(slate);
                    
                    advance[e] = 1;
                    score[e] = score[e] + subpoints[e + 1];
-                   onesregister = score[e] % 10;
-                   tensregister = score[e] / 10;
-                   last_line[e][15] = (char) onesregister + 48;
-                   last_line[e][14] = (char) tensregister + 48;
+                   ones_register = score[e] % 10;
+                   tens_register = score[e] / 10;
+                   last_line[e][15] = (char) ones_register + 48;
+                   last_line[e][14] = (char) tens_register + 48;
                    last_line[e][11] = 32;
                    if(last_line[e][14] == 48){last_line[e][14] = 32;}
 
@@ -6130,10 +6088,10 @@ subtract()
                         stop[e] = 0;
                         make_sub_prob(e);
                       
-                        onesregister =  subtrahend[e] % 10;
-                        tensregister = subtrahend[e] / 10;
-                        last_line[e][2] =  onesregister + 48;
-                        last_line[e][1] = (char) tensregister + 48;
+                        ones_register =  subtrahend[e] % 10;
+                        tens_register = subtrahend[e] / 10;
+                        last_line[e][2] =  ones_register + 48;
+                        last_line[e][1] = (char) tens_register + 48;
                         last_line[e][4] = '-';
                         last_line[e][6] = (char) minuend[e] + 48;
                         last_line[e][8] = '=';
@@ -6141,9 +6099,9 @@ subtract()
                       
                         for (c = 0; c < 20; c++)
                           {
-                            if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
-                            else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
-                            SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][c]);
+                            if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][c], hue[e]);
+                            else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][c], hue[e]);
+                            SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][c]);
                           }
                           
                         SDL_UpdateWindowSurface(slate);
@@ -6167,15 +6125,15 @@ subtract()
                    goofed[e] = 1;
 
                    z[0] = last_line[e][11];
-                   if(net_size==40) correction = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
-                   else correction = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
-                   SDL_BlitSurface(correction, NULL, chalk, &tilem[e][11]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &z[0], white);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &z[0], white);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                    SDL_UpdateWindowSurface(slate);
 
                    last_line[e][11] = 'X';
-                   if(net_size==40) ostraca = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][11], black);
-                   else ostraca = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][11], black);
-                   SDL_BlitSurface(ostraca, NULL, chalk, &tilem[e][11]);
+                   if(net_size==40) scratch = TTF_RenderText_Solid(fntVeraMono33, &last_line[e][11], black);
+                   else scratch = TTF_RenderText_Solid(fntVeraMono40, &last_line[e][11], black);
+                   SDL_BlitSurface(scratch, NULL, chalk, &tilem[e][11]);
                    SDL_UpdateWindowSurface(slate);
                  }
              }
@@ -6196,12 +6154,11 @@ wedge(int c)
 int
 win_page()
 {
-	
-  TTF_Font  *fntVeraMono110 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 110);
-  TTF_Font  *fntVeraMono45 = TTF_OpenFont( "C:/Windows/Fonts/VeraMono.ttf", 45);
+  TTF_Font  *fntVeraMono110 = TTF_OpenFont( ttf_vera_mono_path, 110);
+  TTF_Font  *fntVeraMono45 = TTF_OpenFont( ttf_vera_mono_path, 45);
 
   SDL_Window*  slate = SDL_CreateWindow("uwin",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
-  SDL_Surface* chalk = SDL_GetWindowSurface(slate);
+  chalk = SDL_GetWindowSurface(slate);
 
   SDL_Renderer *rends = SDL_CreateRenderer(slate, -1,SDL_RENDERER_SOFTWARE);
   SDL_SetRenderDrawColor(rends, 255,255,255,255);
