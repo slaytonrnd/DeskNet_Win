@@ -250,7 +250,7 @@ char blankline[41] = "                     ";
 char BUF[41][21] = {"/dev/input/event0","/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0", "/dev/input/event0" };
 
  /* Here's a buffer that holds file names for i/o operations. */
-char Buf[50];
+char Buf[MAX_PATH];
 
  /* These are the buffers for student compositions, limited for now to 
      5000 characters. */
@@ -292,7 +292,53 @@ char net_buffer[2];
 char password[5] = "1040";
 
 char pass[5];
-  /* This is a buffer containing a student composition being formatted 
+
+ /* Path variables defined for Windows and Linux. */
+#ifdef _WIN /* Windows */
+  char path_addpoints[] = "\\Settings\\addpoints\0";
+  char path_answerkeys_text1[MAX_PATH];
+  char path_answerkeys_text2[MAX_PATH];
+  char path_answerkeys_text3[MAX_PATH];
+  char path_answerkeys_text4[MAX_PATH];
+  char path_class[MAX_PATH];
+  char path_divpoints[] = "\\Settings\\divpoints\0";
+  char path_file[] = "\\Files\\file\0";
+  char path_mulpoints[] = "\\Settings\\mulpoints\0";
+  char path_name[] = "\\Names\\name\0";
+  char path_net_size[MAX_PATH];
+  char path_output[] = "\\Files\\output\0";
+  char path_pass[MAX_PATH];
+  char path_subpoints[] = "\\Settings\\subpoints\0";
+  char path_teacher[] = "\\Names\\teacher\0";
+  char path_terma[] = "\\Settings\\terma\0";
+  char path_termb[] = "\\Settings\\termb\0";
+  char path_ttf_vera_mono[] = "C:\\Windows\\Fonts\\VeraMono.ttf\0";
+  char path_type_line[] = "\\Settings\\type_line\0";
+  char path_win_score[] = "\\Settings\\win_score\0";
+#else /* Linux */
+  char path_addpoints[] = "/settings/addpoints\0";
+  char path_answerkeys_text1[] = "/usr/local/etc/answerkeys/text1\0";
+  char path_answerkeys_text2[] = "/usr/local/etc/answerkeys/text2\0";
+  char path_answerkeys_text3[] = "/usr/local/etc/answerkeys/text3\0";
+  char path_answerkeys_text4[] = "/usr/local/etc/answerkeys/text4\0";
+  char path_class[] = "/usr/local/com/class\0";
+  char path_divpoints[] = "/settings/divpoints\0";
+  char path_file[] = "/files/file\0";
+  char path_mulpoints[] = "/settings/mulpoints\0";
+  char path_name[] = "/names/name\0";
+  char path_net_size[] = "/usr/local/etc/net_size\0";
+  char path_output[] = "/files/output\0";
+  char path_pass[] = "/usr/local/etc/pass";
+  char path_subpoints[] = "/settings/subpoints\0";
+  char path_teacher[] = "/names/teacher\0";
+  char path_terma[] = "/settings/terma\0";
+  char path_termb[] = "/settings/termb\0";
+  char path_ttf_vera_mono[] = "/usr/local/etc/fonts/ttf-bitstream-vera-1.10/VeraMono.ttf\0";
+  char path_type_line[] = "/settings/type_line\0";
+  char path_win_score[] = "/settings/win_score\0";
+#endif /* _WIN */
+
+ /* This is a buffer containing a student composition being formatted 
      for hard copy printing. */
 char proof[5001] = "";
 
@@ -531,13 +577,6 @@ char ttext[201][21]=
      " What's the problem?"  // 195
       };
 
-/* Path to the Vera Mono font. */
-#ifdef _WIN /* Windows */
-  char ttf_vera_mono_path[] = "C:\\Windows\\Fonts\\VeraMono.ttf\0";
-#else /* Linux */
-  char ttf_vera_mono_path[] = "/usr/local/etc/fonts/ttf-bitstream-vera-1.10/VeraMono.ttf\0";
-#endif /* _WIN */
-
  /* This array holds ASCII representation of the number of each 
     student's practice typing line.  Used in i/o operations.
     (Corresponding binary representations are held in tline[]. */
@@ -566,6 +605,24 @@ time_t *t= NULL;
  /* Used to time keyboarding and Check Your Math. */
 unsigned long clk[41];
 
+ /* Names of files found under one of the class (1-9) directories or
+    subdirectories */
+enum class_file_name
+{
+  ADDPOINTS,
+  DIVPOINTS,
+  FILE_CFN,
+  MULPOINTS,
+  NAME_CFN,
+  OUTPUT_CFN,
+  SUBPOINTS,
+  TEACHER,
+  TERMA,
+  TERMB,
+  TYPE_LINE,
+  WIN_SCORE
+};
+
                           /* FUNCTIONS */
 
  /* Get keypress value */
@@ -578,6 +635,10 @@ int bail();
  /* This is the main routine for typing tutorial.  Polls student 
     keyboards. */
 int board();
+
+ /* Builds a path string to one of the files found in one of the class (1-9)
+    directories or subdirectories. */
+char * build_class_path(enum class_file_name);
 
  /* This does keyboard polling for Check Your Math. */
 int check();
@@ -733,8 +794,8 @@ add()
 {
   char a;
   int b = 0;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( path_ttf_vera_mono, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40);
 
                     /* OPEN EMPTY WHITE WINDOW */
 
@@ -1012,17 +1073,9 @@ bail()
   for (e = 0; e < 40; e++)
     {
       type_line[e] = (char) (tline[e] + 48);
-    }  
-  if (class == 1) FP = fopen("/usr/local/com/class1/settings/type_line", "w");
-  if (class == 2) FP = fopen("/usr/local/com/class2/settings/type_line", "w");
-  if (class == 3) FP = fopen("/usr/local/com/class3/settings/type_line", "w");
-  if (class == 4) FP = fopen("/usr/local/com/class4/settings/type_line", "w");
-  if (class == 5) FP = fopen("/usr/local/com/class5/settings/type_line", "w");
-  if (class == 6) FP = fopen("/usr/local/com/class6/settings/type_line", "w");
-  if (class == 7) FP = fopen("/usr/local/com/class7/settings/type_line", "w");
-  if (class == 8) FP = fopen("/usr/local/com/class8/settings/type_line", "w");
-  if (class == 9) FP = fopen("/usr/local/com/class9/settings/type_line", "w");
+    }
 
+  FP = fopen(build_class_path(TYPE_LINE), "w");
   fputs(type_line, FP);
   fclose(FP);
   return 0;
@@ -1032,8 +1085,8 @@ int
 board()
 {
   char a;
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30);
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( path_ttf_vera_mono, 30);
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40);
 
   slate = SDL_CreateWindow("keyboard",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -1153,10 +1206,56 @@ board()
   return 0;          
 }
 
+char *
+build_class_path(enum class_file_name file_name)
+{
+  switch (file_name)
+  {
+    case ADDPOINTS:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_addpoints);
+      break;
+    case DIVPOINTS:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_divpoints);
+      break;
+    case FILE_CFN:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_file);
+      break;
+    case MULPOINTS:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_mulpoints);
+      break;
+    case NAME_CFN:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_name);
+      break;
+    case OUTPUT_CFN:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_output);
+      break;
+    case SUBPOINTS:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_subpoints);
+      break;
+    case TEACHER:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_teacher);
+      break;
+    case TERMA:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_terma);
+      break;
+    case TERMB:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_termb);
+      break;
+    case TYPE_LINE:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_type_line);
+      break;
+    case WIN_SCORE:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_win_score);
+      break;
+  }
+  
+  return Buf;
+}
+
 int
 changepage()
 {
-  TTF_Font  *fntVeraMono45 = TTF_OpenFont( ttf_vera_mono_path, 45);
+  TTF_Font  *fntVeraMono45 = TTF_OpenFont( path_ttf_vera_mono, 45);
 
   changeslate = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   display = SDL_GetWindowSurface(changeslate);
@@ -1237,8 +1336,8 @@ int
 check()
 {
   int d = 0;
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( path_ttf_vera_mono, 30 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40);
 
   slate = SDL_CreateWindow("check",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -1472,7 +1571,7 @@ clear_pro()
 int
 detente()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
     
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -1512,8 +1611,8 @@ int
 divide()
 {
   char a;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( path_ttf_vera_mono, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40);
 
                           /* OPEN EMPTY WHITE WINDOW */
 
@@ -1697,7 +1796,7 @@ divide()
 int
 double_check()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
     
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -1798,7 +1897,7 @@ eval_type()
 int
 fetch_letter()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50);
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50);
   
   slate = SDL_CreateWindow("classname",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -2072,18 +2171,8 @@ fetch_letter()
                           letter[0] ='<';
                           break;
                              
-                        case SDLK_RETURN:   
-         
-                          if (class == 1) FP = fopen("/usr/local/com/class1/names/teacher", "w");
-                          if (class == 2) FP = fopen("/usr/local/com/class2/names/teacher", "w");
-                          if (class == 3) FP = fopen("/usr/local/com/class3/names/teacher", "w");
-                          if (class == 4) FP = fopen("/usr/local/com/class4/names/teacher", "w");
-                          if (class == 5) FP = fopen("/usr/local/com/class5/names/teacher", "w");
-                          if (class == 6) FP = fopen("/usr/local/com/class6/names/teacher", "w");
-                          if (class == 7) FP = fopen("/usr/local/com/class7/names/teacher", "w");
-                          if (class == 8) FP = fopen("/usr/local/com/class8/names/teacher", "w");
-                          if (class == 9) FP = fopen("/usr/local/com/class9/names/teacher", "w");
-             
+                        case SDLK_RETURN:
+                          FP = fopen(build_class_path(TEACHER), "w");
                           fputs(teacher, FP);
                           fclose(FP);
                           SDL_DestroyWindow(slate);
@@ -2118,7 +2207,7 @@ fetch_letter()
 int
 fetch_name()
 {  
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
 
                          /* OPEN EMPTY WHITE WINDOW. */
 
@@ -2185,7 +2274,7 @@ fetch_win_score()
 {
   int b = 0;
   int digit = 0;
-  TTF_Font  *fntVeraMono45 = TTF_OpenFont( ttf_vera_mono_path, 45);
+  TTF_Font  *fntVeraMono45 = TTF_OpenFont( path_ttf_vera_mono, 45);
       
                        /* CREATE SLATE ON WHICH TO WRITE */
   
@@ -2240,17 +2329,8 @@ fetch_win_score()
   alpha();
   
   ww[0] = (char)(win_score);
-  
-  if (class == 1) FP = fopen("/usr/local/com/class1/settings/win_score", "w");
-  if (class == 2) FP = fopen("/usr/local/com/class2/settings/win_score", "w");
-  if (class == 3) FP = fopen("/usr/local/com/class3/settings/win_score", "w");
-  if (class == 4) FP = fopen("/usr/local/com/class4/settings/win_score", "w");
-  if (class == 5) FP = fopen("/usr/local/com/class5/settings/win_score", "w");
-  if (class == 6) FP = fopen("/usr/local/com/class6/settings/win_score", "w");
-  if (class == 7) FP = fopen("/usr/local/com/class7/settings/win_score", "w");
-  if (class == 8) FP = fopen("/usr/local/com/class8/settings/win_score", "w");
-  if (class == 9) FP = fopen("/usr/local/com/class9/settings/win_score", "w");
-  
+
+  FP = fopen(build_class_path(WIN_SCORE), "w");
   fputs(ww, FP);
   fclose(FP);
   SDL_DestroyWindow(slate);
@@ -3023,7 +3103,7 @@ get_names()
 int
 get_nine()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50);
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50);
 
   slate = SDL_CreateWindow("factor",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -3095,17 +3175,8 @@ handicap()
   if (operation == 4) divpoints[e + 1] = a;
 
   for (e = 1;  e < 41;  e++){ hndicap[e] = (char)(addpoints[e] + 48);}
-
-  if (class == 1) FP = fopen("/usr/local/com/class1/settings/addpoints", "w");
-  if (class == 2) FP = fopen("/usr/local/com/class2/settings/addpoints", "w");
-  if (class == 3) FP = fopen("/usr/local/com/class3/settings/addpoints", "w");
-  if (class == 4) FP = fopen("/usr/local/com/class4/settings/addpoints", "w");
-  if (class == 5) FP = fopen("/usr/local/com/class5/settings/addpoints", "w");
-  if (class == 6) FP = fopen("/usr/local/com/class6/settings/addpoints", "w");
-  if (class == 7) FP = fopen("/usr/local/com/class7/settings/addpoints", "w");
-  if (class == 8) FP = fopen("/usr/local/com/class8/settings/addpoints", "w");
-  if (class == 9) FP = fopen("/usr/local/com/class9/settings/addpoints", "w");
-
+  
+  FP = fopen(build_class_path(ADDPOINTS), "w");
   fputs(hndicap, FP);
   fclose(FP);
 
@@ -3168,7 +3239,7 @@ handicapenterpage()
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
 
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
   struct SDL_Rect slots[3];
     
      slots[0].x = 0;
@@ -3204,7 +3275,7 @@ handicapenterpage()
 int
 handicapoppage()
 {
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
   
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -3268,9 +3339,27 @@ main(int ARGC, char *ARGV[])
  
   SDL_Init(SDL_INIT_VIDEO);
   TTF_Init();   
+  
+  #ifdef _WIN /* Windows */
+    char documents_path[MAX_PATH];
+	char desknet_path[MAX_PATH];
+	
+	/* Get the Windows Documents path and append Desknet to it */
+    SHGetFolderPath(NULL, CSIDL_PERSONAL, NULL, SHGFP_TYPE_CURRENT, documents_path);
+	snprintf(desknet_path, MAX_PATH, "%s%s", documents_path, "\\Desknet\0");
+	
+	/* Files and subfolders under Desknet folder */
+    snprintf(path_answerkeys_text1, MAX_PATH, "%s%s", desknet_path, "\\AnswerKeys\\text1\0");
+    snprintf(path_answerkeys_text2, MAX_PATH, "%s%s", desknet_path, "\\AnswerKeys\\text2\0");
+    snprintf(path_answerkeys_text3, MAX_PATH, "%s%s", desknet_path, "\\AnswerKeys\\text3\0");
+    snprintf(path_answerkeys_text4, MAX_PATH, "%s%s", desknet_path, "\\AnswerKeys\\text4\0");
+    snprintf(path_class, MAX_PATH, "%s%s", desknet_path, "\\Class\0");
+	snprintf(path_net_size, MAX_PATH, "%s%s", desknet_path, "\\net_size\0");
+	snprintf(path_pass, MAX_PATH, "%s%s", desknet_path, "\\pass\0");
+  #endif
 
   /*  How many keyboards are in the network?  */
-  FP = fopen("/usr/local/etc/net_size", "r");
+  FP = fopen(path_net_size, "r");
   fgets(net_buffer, 2, FP);
   fclose(FP);
   net_size = (10 * ((int)net_buffer[0]-48));
@@ -3865,15 +3954,7 @@ main(int ARGC, char *ARGV[])
       /*  These sections download the handicaps for each kind of math 
           operation  */
 
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/addpoints", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/addpoints", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/addpoints", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/addpoints", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/addpoints", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/addpoints", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/addpoints", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/addpoints", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/addpoints", "r"); 
+      FP = fopen(build_class_path(ADDPOINTS), "r");
       fgets(hndicap, 42, FP);
       fclose(FP);
       for (e = 0;  e < 41;  e++)
@@ -4063,7 +4144,7 @@ menu()
      
   SDL_Event event;
       
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30 );
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( path_ttf_vera_mono, 30 );
      
   struct SDL_Rect tile[25];
        
@@ -4686,7 +4767,7 @@ menu()
 int
 message(e, tt)
 {
-   TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+   TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
 
       {
          scratch = TTF_RenderText_Solid(fntVeraMono50, ttext[tt], hue[e]);
@@ -4700,8 +4781,8 @@ int
 multiply()
 {
   char a;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40 );
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( path_ttf_vera_mono, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40 );
 
                       /* OPEN EMPTY WHITE WINDOW. */
 
@@ -4952,7 +5033,7 @@ if (comp[e-1][0] == 0) return 0;
   slots[2].x = 80;
   slots[2].y = 395;
   
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
             
                       /* PUT LINE LENGTH INTO INTEGER b. */
       
@@ -5102,8 +5183,8 @@ int
 process()
 {
   int b = 0;
-  TTF_Font  *fntVeraMono30 = TTF_OpenFont( ttf_vera_mono_path, 30);
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
+  TTF_Font  *fntVeraMono30 = TTF_OpenFont( path_ttf_vera_mono, 30);
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40);
 
   slate = SDL_CreateWindow("processor",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -5394,8 +5475,8 @@ random_num()
 int
 roster_page()
 {
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 30);
-  TTF_Font  *fntVeraMono20 = TTF_OpenFont( ttf_vera_mono_path, 20);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( path_ttf_vera_mono, 30);
+  TTF_Font  *fntVeraMono20 = TTF_OpenFont( path_ttf_vera_mono, 20);
 
   slate = SDL_CreateWindow("add",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -5563,7 +5644,7 @@ security()
 {
   int a = 0;
   char s[5] = {0,0,0,0,0};
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 30);
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 30);
   
   SDL_Window*  slate = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -5652,7 +5733,7 @@ int
 select_board_page()
 {
   char proxy[3] = {0,0,0};
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
 
   panic = 0;
   slate = SDL_CreateWindow("selectboard",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -5718,7 +5799,7 @@ select_board_page()
 int
 select_book()
 {
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40 );
     
   slate = SDL_CreateWindow("operation",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
@@ -5832,7 +5913,7 @@ select_line_page(e)
   SDL_RenderPresent(rends);
   SDL_UpdateWindowSurface(slate);
 
-  TTF_Font  *fntVeraMono50 = TTF_OpenFont( ttf_vera_mono_path, 50 );
+  TTF_Font  *fntVeraMono50 = TTF_OpenFont( path_ttf_vera_mono, 50 );
      
   struct SDL_Rect slots[2];
      
@@ -5898,8 +5979,8 @@ select_line_page(e)
 int
 splash_page()
 {
-  TTF_Font  *fntVeraMono90 = TTF_OpenFont( ttf_vera_mono_path, 90);
-  TTF_Font  *fntVeraMono35 = TTF_OpenFont( ttf_vera_mono_path, 35);
+  TTF_Font  *fntVeraMono90 = TTF_OpenFont( path_ttf_vera_mono, 90);
+  TTF_Font  *fntVeraMono35 = TTF_OpenFont( path_ttf_vera_mono, 35);
 
   SDL_Window*  window = SDL_CreateWindow("bumper",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   SDL_Surface* display = SDL_GetWindowSurface(window);
@@ -5966,8 +6047,8 @@ int
 subtract()
 {
   char a;
-  TTF_Font  *fntVeraMono33 = TTF_OpenFont( ttf_vera_mono_path, 33 );
-  TTF_Font  *fntVeraMono40 = TTF_OpenFont( ttf_vera_mono_path, 40);
+  TTF_Font  *fntVeraMono33 = TTF_OpenFont( path_ttf_vera_mono, 33 );
+  TTF_Font  *fntVeraMono40 = TTF_OpenFont( path_ttf_vera_mono, 40);
 
                           /* OPEN EMPTY WHITE WINDOW. */
 
@@ -6154,8 +6235,8 @@ wedge(int c)
 int
 win_page()
 {
-  TTF_Font  *fntVeraMono110 = TTF_OpenFont( ttf_vera_mono_path, 110);
-  TTF_Font  *fntVeraMono45 = TTF_OpenFont( ttf_vera_mono_path, 45);
+  TTF_Font  *fntVeraMono110 = TTF_OpenFont( path_ttf_vera_mono, 110);
+  TTF_Font  *fntVeraMono45 = TTF_OpenFont( path_ttf_vera_mono, 45);
 
   SDL_Window*  slate = SDL_CreateWindow("uwin",0,0,1024,768,SDL_WINDOW_FULLSCREEN_DESKTOP);
   chalk = SDL_GetWindowSurface(slate);
