@@ -25,6 +25,8 @@ Author's address as of 11.3.14 is 260 Sundance Ct, Azusa, CA 91792. */
   #include <sys/time.h>
   #include <winsock2.h>
 #else /* Linux */
+  #define MAX_PATH 64
+
   #include <linux/input.h>
   #include <sys/ioctl.h>
   #include <time.h>
@@ -303,8 +305,10 @@ char pass[5];
   char path_class[MAX_PATH];
   char path_divpoints[] = "\\Settings\\divpoints\0";
   char path_file[] = "\\Files\\file\0";
+  char path_filea[] = "\\Files\\filea\0";
   char path_mulpoints[] = "\\Settings\\mulpoints\0";
   char path_name[] = "\\Names\\name\0";
+  char path_namea[] = "\\Names\\namea\0";
   char path_net_size[MAX_PATH];
   char path_output[] = "\\Files\\output\0";
   char path_pass[MAX_PATH];
@@ -324,8 +328,10 @@ char pass[5];
   char path_class[] = "/usr/local/com/class\0";
   char path_divpoints[] = "/settings/divpoints\0";
   char path_file[] = "/files/file\0";
+  char path_filea[] = "/files/filea\0";
   char path_mulpoints[] = "/settings/mulpoints\0";
   char path_name[] = "/names/name\0";
+  char path_namea[] = "/names/namea\0";
   char path_net_size[] = "/usr/local/etc/net_size\0";
   char path_output[] = "/files/output\0";
   char path_pass[] = "/usr/local/etc/pass";
@@ -612,8 +618,10 @@ enum class_file_name
   ADDPOINTS,
   DIVPOINTS,
   FILE_CFN,
+  FILEA,
   MULPOINTS,
   NAME_CFN,
+  NAMEA,
   OUTPUT_CFN,
   SUBPOINTS,
   TEACHER,
@@ -636,8 +644,8 @@ int bail();
     keyboards. */
 int board();
 
- /* Builds a path string to one of the files found in one of the class (1-9)
-    directories or subdirectories. */
+ /* Builds a path string to one of the files found in one of the class
+    (1-9) directories or subdirectories and loads it into Buf. */
 char * build_class_path(enum class_file_name);
 
  /* This does keyboard polling for Check Your Math. */
@@ -1220,11 +1228,17 @@ build_class_path(enum class_file_name file_name)
     case FILE_CFN:
       snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_file);
       break;
+    case FILEA:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_filea);
+      break;
     case MULPOINTS:
       snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_mulpoints);
       break;
     case NAME_CFN:
       snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_name);
+      break;
+    case NAMEA:
+      snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_namea);
       break;
     case OUTPUT_CFN:
       snprintf(Buf, MAX_PATH, "%s%d%s", path_class, class, path_output);
@@ -2342,25 +2356,19 @@ file_save()
 {
   for (e = 0;  e < 26; e++)
     {
-      strcpy (Buf, "");
-    
-      if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
-      if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
-      if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
-      if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
-      if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
-      if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
-      if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
-      if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
-      if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
+      int l;
+        
+      build_class_path(FILE_CFN);
       
-      Buf[32] = e + 97;
-      Buf[33] = 0;
+      l = strlen(Buf);
+      Buf[l] = e + 97;
+      Buf[l + 1] = 0;
          
       FP = fopen (Buf, "w");
       fputs (comp[e], FP);
       fclose (FP);
-        
+	  
+      #ifndef _WIN /* Linux */
       strcpy (Buf, "");
       strcpy (Buf, "/root/Documents/");
       strcat (Buf, roster[e + 1]);
@@ -2371,29 +2379,24 @@ file_save()
           fputs (comp[e], FP);
           fclose (FP);
         }
+      #endif /* _WIN */
     }
     
-  for (e = 26;  e < 41; e++)
+  for (e = 26;  e < 40; e++)
     {
-      strcpy (Buf, "");
+      int l;
       
-      if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
-      if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
-      if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
-      if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
-      if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
-      if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
-      if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
-      if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
-      if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
+      build_class_path(FILEA);
       
-      Buf[32] = e + 23;
-      Buf[33] = 0;
+      l = strlen(Buf);
+      Buf[l] = e + 71;
+      Buf[l + 1] = 0;
            
       FP = fopen (Buf, "w");
       fputs (comp[e], FP);
       fclose (FP);
-          
+      
+      #ifndef _WIN /* Linux */
       strcpy (Buf, "");
       strcpy (Buf, "/root/Documents/");
       strcat (Buf, roster[e + 1]);
@@ -2404,6 +2407,7 @@ file_save()
           fputs (comp[e], FP);
           fclose (FP);
         }
+      #endif /* _WIN */
     }
   return 0;
 }
@@ -2800,59 +2804,59 @@ get_config()
   fgets(BUF[25], 22, FP);
   fclose(FP);
    
-  FP = fopen("/usr/local/etc/events/bufA", "r");
+  FP = fopen("/usr/local/etc/events/bufaa", "r");
   fgets(BUF[26], 22, FP);
   fclose(FP);
    
-  FP = fopen("/usr/local/etc/events/bufB", "r");
+  FP = fopen("/usr/local/etc/events/bufab", "r");
   fgets(BUF[27], 22, FP);
   fclose(FP);
    
-  FP = fopen("/usr/local/etc/events/bufC", "r");
+  FP = fopen("/usr/local/etc/events/bufac", "r");
   fgets(BUF[28], 22, FP);
   fclose(FP);
    
-  FP = fopen("/usr/local/etc/events/bufD", "r");
+  FP = fopen("/usr/local/etc/events/bufad", "r");
   fgets(BUF[29], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufE", "r");
+  FP = fopen("/usr/local/etc/events/bufae", "r");
   fgets(BUF[30], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufF", "r");
+  FP = fopen("/usr/local/etc/events/bufaf", "r");
   fgets(BUF[31], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufG", "r");
+  FP = fopen("/usr/local/etc/events/bufag", "r");
   fgets(BUF[32], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufH", "r");
+  FP = fopen("/usr/local/etc/events/bufah", "r");
   fgets(BUF[33], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufI", "r");
+  FP = fopen("/usr/local/etc/events/bufai", "r");
   fgets(BUF[34], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufJ", "r");
+  FP = fopen("/usr/local/etc/events/bufaj", "r");
   fgets(BUF[35], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufK", "r");
+  FP = fopen("/usr/local/etc/events/bufak", "r");
   fgets(BUF[36], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufL", "r");
+  FP = fopen("/usr/local/etc/events/bufal", "r");
   fgets(BUF[37], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufM", "r");
+  FP = fopen("/usr/local/etc/events/bufam", "r");
   fgets(BUF[38], 22, FP);
   fclose(FP);
 
-  FP = fopen("/usr/local/etc/events/bufN", "r");
+  FP = fopen("/usr/local/etc/events/bufan", "r");
   fgets(BUF[39], 22, FP);
   fclose(FP);
    
@@ -3008,25 +3012,19 @@ get_file()
   int a;
   int incoming = 0;
   int char_nmbr;
+  int l;
   
                      /* ADDRESS THE CURRENT CLASS. */
   
-  if (class == 1) strcpy (Buf, "/usr/local/com/class1/files/file");
-  if (class == 2) strcpy (Buf, "/usr/local/com/class2/files/file");
-  if (class == 3) strcpy (Buf, "/usr/local/com/class3/files/file");
-  if (class == 4) strcpy (Buf, "/usr/local/com/class4/files/file");
-  if (class == 5) strcpy (Buf, "/usr/local/com/class5/files/file");
-  if (class == 6) strcpy (Buf, "/usr/local/com/class6/files/file");
-  if (class == 7) strcpy (Buf, "/usr/local/com/class7/files/file");
-  if (class == 8) strcpy (Buf, "/usr/local/com/class8/files/file");
-  if (class == 9) strcpy (Buf, "/usr/local/com/class9/files/file");
+  build_class_path(FILE_CFN);
+  l = strlen(Buf);
 
                 /* OPEN INDIVIDUAL STUDENT FILES, FIRST 26. */
 
   for (a = 0;  a < 26; a++)
     {
-      Buf[32] = a + 97; 
-      Buf[33] = 0;
+      Buf[l] = a + 97; 
+      Buf[l + 1] = 0;
       FP = fopen(Buf,"a+");
       for(char_nmbr = 0; char_nmbr < 5000; char_nmbr++)
         {
@@ -3037,12 +3035,17 @@ get_file()
       fclose(FP);
     }
 
+                     /* READDRESS THE CURRENT CLASS. */
+  
+  build_class_path(FILEA);
+  l = strlen(Buf);
+
                 /* OPEN INDIVIDUAL STUDENT FILES, LAST 14. */
   
   for (a = 26;  a < net_size; a++)
     {
-      Buf[32] = a + 38; 
-      Buf[33] = 0;
+      Buf[l] = a + 71;
+      Buf[l + 1] = 0;
       FP = fopen(Buf,"a+");
       for(char_nmbr = 0; char_nmbr < 5000; char_nmbr++)
         {
@@ -3061,37 +3064,36 @@ int
 get_names()
 {
   int a;
+  int l;
  
                    /*  ADDRESS THE CURRENT CLASS. */ 
 
-  if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
-  if (class == 2) strcpy (Buf, "/usr/local/com/class2/names/name");
-  if (class == 3) strcpy (Buf, "/usr/local/com/class3/names/name");
-  if (class == 4) strcpy (Buf, "/usr/local/com/class4/names/name");
-  if (class == 5) strcpy (Buf, "/usr/local/com/class5/names/name");
-  if (class == 6) strcpy (Buf, "/usr/local/com/class6/names/name");
-  if (class == 7) strcpy (Buf, "/usr/local/com/class7/names/name");
-  if (class == 8) strcpy (Buf, "/usr/local/com/class8/names/name");
-  if (class == 9) strcpy (Buf, "/usr/local/com/class9/names/name");
+  build_class_path(NAME_CFN);
+  l = strlen(Buf);
 
            /*  GET INDIVIDUAL STUDENT NAMES, FIRST 26. */
 
   for (a = 1;  a < 27; a++)
     {
-      Buf[33] = 0;
-      Buf[32] = a + 96; 
+      Buf[l] = a + 96; 
+      Buf[l + 1] = 0;
       FP = fopen(Buf, "a+");
       strcpy (roster[a], dumm);
       fgets (roster[a], 10, FP);
       fclose(FP);
     }
 
+                   /*  RE-ADDRESS THE CURRENT CLASS. */ 
+
+  build_class_path(NAMEA);
+  l = strlen(Buf);
+
              /* GET INDIVIDUAL STUDENT NAMES, LAST 14. */
   
   for (a = 27;  a < 41; a++)
     {
-      Buf[32] = a + 38; 
-      Buf[33] = 0;
+      Buf[l] = a + 70; 
+      Buf[l + 1] = 0;
       FP = fopen(Buf,"a+");
       strcpy (roster[a], dumm);
       fgets (roster[a], 10, FP);
@@ -3182,45 +3184,21 @@ handicap()
 
   for (e = 1;  e < 41;  e++) hndicap[e] = (char)(subpoints[e] + 48);
 
-  if (class == 1) FP = fopen("/usr/local/com/class1/settings/subpoints", "w");
-  if (class == 2) FP = fopen("/usr/local/com/class2/settings/subpoints", "w");
-  if (class == 3) FP = fopen("/usr/local/com/class3/settings/subpoints", "w");
-  if (class == 4) FP = fopen("/usr/local/com/class4/settings/subpoints", "w");
-  if (class == 5) FP = fopen("/usr/local/com/class5/settings/subpoints", "w");
-  if (class == 6) FP = fopen("/usr/local/com/class6/settings/subpoints", "w");
-  if (class == 7) FP = fopen("/usr/local/com/class7/settings/subpoints", "w");
-  if (class == 8) FP = fopen("/usr/local/com/class8/settings/subpoints", "w");
-  if (class == 9) FP = fopen("/usr/local/com/class9/settings/subpoints", "w");
+  FP = fopen(build_class_path(SUBPOINTS), "w");
 
   fputs(hndicap, FP);
   fclose(FP);
   
   for (e = 1;  e < 41;  e++) hndicap[e] = (char)(mulpoints[e] + 48);
 
-  if (class == 1) FP = fopen("/usr/local/com/class1/settings/mulpoints", "w");
-  if (class == 2) FP = fopen("/usr/local/com/class2/settings/mulpoints", "w");
-  if (class == 3) FP = fopen("/usr/local/com/class3/settings/mulpoints", "w");
-  if (class == 4) FP = fopen("/usr/local/com/class4/settings/mulpoints", "w");
-  if (class == 5) FP = fopen("/usr/local/com/class5/settings/mulpoints", "w");
-  if (class == 6) FP = fopen("/usr/local/com/class6/settings/mulpoints", "w");
-  if (class == 7) FP = fopen("/usr/local/com/class7/settings/mulpoints", "w");
-  if (class == 8) FP = fopen("/usr/local/com/class8/settings/mulpoints", "w");
-  if (class == 9) FP = fopen("/usr/local/com/class9/settings/mulpoints", "w");
+  FP = fopen(build_class_path(MULPOINTS), "w");
 
   fputs(hndicap, FP);
   fclose(FP);
   
   for (e = 1;  e < 41;  e++) hndicap[e] = (char)(divpoints[e] + 48);
 
-  if (class == 1) FP = fopen("/usr/local/com/class1/settings/divpoints", "w");
-  if (class == 2) FP = fopen("/usr/local/com/class2/settings/divpoints", "w");
-  if (class == 3) FP = fopen("/usr/local/com/class3/settings/divpoints", "w");
-  if (class == 4) FP = fopen("/usr/local/com/class4/settings/divpoints", "w");
-  if (class == 5) FP = fopen("/usr/local/com/class5/settings/divpoints", "w");
-  if (class == 6) FP = fopen("/usr/local/com/class6/settings/divpoints", "w");
-  if (class == 7) FP = fopen("/usr/local/com/class7/settings/divpoints", "w");
-  if (class == 8) FP = fopen("/usr/local/com/class8/settings/divpoints", "w");
-  if (class == 9) FP = fopen("/usr/local/com/class9/settings/divpoints", "w");
+  FP = fopen(build_class_path(DIVPOINTS), "w");
 
   fputs(hndicap, FP);
   fclose(FP);
@@ -3871,55 +3849,23 @@ main(int ARGC, char *ARGV[])
       /*  These download the lists of numbers from which the program 
           randomly draws to create the math problems.  */
         
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/terma", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/terma", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/terma", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/terma", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/terma", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/terma", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/terma", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/terma", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/terma", "r");
+      FP = fopen(build_class_path(TERMA), "r");
       fgets(terma_buffer, 10, FP);
       fclose(FP);
       strcpy(terma, terma_buffer);
       
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/termb", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/termb", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/termb", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/termb", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/termb", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/termb", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/termb", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/termb", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/termb", "r");
+      FP = fopen(build_class_path(TERMB), "r");
       fgets(termb_buffer, 10, FP);
       fclose(FP);
       strcpy(termb, termb_buffer);
 
       /*  Download name of the teacher for this class  */
-      if (class == 1) FP = fopen("/usr/local/com/class1/names/teacher", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/names/teacher", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/names/teacher", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/names/teacher", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/names/teacher", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/names/teacher", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/names/teacher", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/names/teacher", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/names/teacher", "r");
+      FP = fopen(build_class_path(TEACHER), "r");
       fgets(teacher, 15, FP);
       fclose(FP);
       
       /*  Get the score needed to win math games  */
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/win_score", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/win_score", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/win_score", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/win_score", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/win_score", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/win_score", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/win_score", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/win_score", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/win_score", "r");
+      FP = fopen(build_class_path(WIN_SCORE), "r");
       fgets(ww, 2, FP);
       fclose(FP);
       
@@ -3934,20 +3880,12 @@ main(int ARGC, char *ARGV[])
       
       /*  Download a list showing what typing practice line each student is
           working on.  */
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/type_line", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/type_line", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/type_line", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/type_line", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/type_line", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/type_line", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/type_line", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/type_line", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/type_line", "r");
+      FP = fopen(build_class_path(TYPE_LINE), "r");
       fgets(type_line, 41, FP);
       fclose(FP);
          
       /*  Download system password  */
-      FP = fopen("/usr/local/etc/pass", "r");
+      FP = fopen(path_pass, "r");
       fgets(pass, 5, FP);
       fclose(FP);
         
@@ -3962,15 +3900,7 @@ main(int ARGC, char *ARGV[])
           addpoints[e] = (int)(hndicap[e]) - 48;
         }
          
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/subpoints", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/subpoints", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/subpoints", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/subpoints", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/subpoints", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/subpoints", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/subpoints", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/subpoints", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/subpoints", "r");
+      FP = fopen(build_class_path(SUBPOINTS), "r");
       fgets(hndicap, 42, FP);
       fclose(FP);
       for (e = 0;  e < 41;  e++)
@@ -3978,15 +3908,7 @@ main(int ARGC, char *ARGV[])
           subpoints[e] = (int)(hndicap[e]) - 48;
         }
     
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/mulpoints", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/mulpoints", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/mulpoints", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/mulpoints", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/mulpoints", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/mulpoints", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/mulpoints", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/mulpoints", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/mulpoints", "r");
+      FP = fopen(build_class_path(MULPOINTS), "r");
       fgets(hndicap, 42, FP);
       fclose(FP);
       for (e = 0;  e < 41;  e++)
@@ -3994,15 +3916,7 @@ main(int ARGC, char *ARGV[])
           mulpoints[e] = (int)(hndicap[e]) - 48;
         }
         
-      if (class == 1) FP = fopen("/usr/local/com/class1/settings/divpoints", "r");
-      if (class == 2) FP = fopen("/usr/local/com/class2/settings/divpoints", "r");
-      if (class == 3) FP = fopen("/usr/local/com/class3/settings/divpoints", "r");
-      if (class == 4) FP = fopen("/usr/local/com/class4/settings/divpoints", "r");
-      if (class == 5) FP = fopen("/usr/local/com/class5/settings/divpoints", "r");
-      if (class == 6) FP = fopen("/usr/local/com/class6/settings/divpoints", "r");
-      if (class == 7) FP = fopen("/usr/local/com/class7/settings/divpoints", "r");
-      if (class == 8) FP = fopen("/usr/local/com/class8/settings/divpoints", "r");
-      if (class == 9) FP = fopen("/usr/local/com/class9/settings/divpoints", "r");
+      FP = fopen(build_class_path(DIVPOINTS), "r");
       fgets(hndicap, 42, FP);
       fclose(FP);
       for (e = 0;  e < 41;  e++)
@@ -4476,16 +4390,7 @@ menu()
                      terma[b] = (char)(a);  
                    } 
                 
-                if (class == 1) FP = fopen("/usr/local/com/class1/settings/terma", "w");
-                if (class == 2) FP = fopen("/usr/local/com/class2/settings/terma", "w");
-                if (class == 3) FP = fopen("/usr/local/com/class3/settings/terma", "w");
-                if (class == 4) FP = fopen("/usr/local/com/class4/settings/terma", "w");
-                if (class == 5) FP = fopen("/usr/local/com/class5/settings/terma", "w");
-                if (class == 6) FP = fopen("/usr/local/com/class6/settings/terma", "w");
-                if (class == 7) FP = fopen("/usr/local/com/class7/settings/terma", "w");
-                if (class == 8) FP = fopen("/usr/local/com/class8/settings/terma", "w");
-                if (class == 9) FP = fopen("/usr/local/com/class9/settings/terma", "w");
-                 
+                FP = fopen(build_class_path(TERMA), "w");                 
                 fputs(terma, FP);
                 fclose(FP);
                 for (b = 0; b < 9; b++)
@@ -4513,17 +4418,9 @@ menu()
                     t2[b] = (int)factor[b];
                     a = t2[b];
                     termb[b] = (char)(a);
-                  }  
-                if (class == 1) FP = fopen("/usr/local/com/class1/settings/termb", "w");
-                if (class == 2) FP = fopen("/usr/local/com/class2/settings/termb", "w");
-                if (class == 3) FP = fopen("/usr/local/com/class3/settings/termb", "w");
-                if (class == 4) FP = fopen("/usr/local/com/class4/settings/termb", "w");
-                if (class == 5) FP = fopen("/usr/local/com/class5/settings/termb", "w");
-                if (class == 6) FP = fopen("/usr/local/com/class6/settings/termb", "w");
-                if (class == 7) FP = fopen("/usr/local/com/class7/settings/termb", "w");
-                if (class == 8) FP = fopen("/usr/local/com/class8/settings/termb", "w");
-                if (class == 9) FP = fopen("/usr/local/com/class9/settings/termb", "w");
-                
+                  }
+                  
+                FP = fopen(build_class_path(TERMB), "w");                
                 fputs(termb, FP);
                 fclose(FP);
                 for (b = 0; b < 9; b++)
@@ -4636,20 +4533,14 @@ menu()
 
              for (e = 1; e < 27; e++)
                {
-                 strcpy (Buf, "");
-                 if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
-                 if (class == 2) strcpy (Buf, "/usr/local/com/class2/names/name");
-                 if (class == 3) strcpy (Buf, "/usr/local/com/class3/names/name");
-                 if (class == 4) strcpy (Buf, "/usr/local/com/class4/names/name");
-                 if (class == 5) strcpy (Buf, "/usr/local/com/class5/names/name");
-                 if (class == 6) strcpy (Buf, "/usr/local/com/class6/names/name");
-                 if (class == 7) strcpy (Buf, "/usr/local/com/class7/names/name");
-                 if (class == 8) strcpy (Buf, "/usr/local/com/class8/names/name");
-                 if (class == 9) strcpy (Buf, "/usr/local/com/class9/names/name");
+                 int l;
+                 
+                 build_class_path(NAME_CFN);
+                 l = strlen(Buf);
 
                /* SAVE FIRST 26 NAMES */
-                 Buf[32] = e + 96;
-                 Buf[33] = 0;
+                 Buf[l] = e + 96;
+                 Buf[l + 1] = 0;
                   
                  FP = fopen (Buf, "w");
                  fputs (roster[e], FP);
@@ -4659,19 +4550,13 @@ menu()
                /* SAVE LAST 14 NAMES */
              for (e = 27; e < 41; e++)
                {
-                 strcpy (Buf, "");
-                 if (class == 1) strcpy (Buf, "/usr/local/com/class1/names/name");
-                 if (class == 2) strcpy (Buf, "/usr/local/com/class2/names/name");
-                 if (class == 3) strcpy (Buf, "/usr/local/com/class3/names/name");
-                 if (class == 4) strcpy (Buf, "/usr/local/com/class4/names/name");
-                 if (class == 5) strcpy (Buf, "/usr/local/com/class5/names/name");
-                 if (class == 6) strcpy (Buf, "/usr/local/com/class6/names/name");
-                 if (class == 7) strcpy (Buf, "/usr/local/com/class7/names/name");
-                 if (class == 8) strcpy (Buf, "/usr/local/com/class8/names/name");
-                 if (class == 9) strcpy (Buf, "/usr/local/com/class9/names/name");
+                 int l;
+                 
+                 build_class_path(NAMEA);
+                 l = strlen(Buf);
 
-                 Buf[32] = e + 38;
-                 Buf[33] = 0;
+                 Buf[l] = e + 70;
+                 Buf[l + 1] = 0;
                   
                  FP = fopen (Buf, "w");
                  fputs (roster[e], FP);
@@ -5856,7 +5741,7 @@ select_book()
           switch(event.key.keysym.sym)
            {
              case SDLK_1:
-             FP = fopen("/usr/local/etc/answerkeys/text1", "r");
+             FP = fopen(path_answerkeys_text1, "r");
              fgets(key, 40000, FP);
              fclose(FP);
              SDL_DestroyWindow(slate);
@@ -5864,7 +5749,7 @@ select_book()
              break;
                   
              case SDLK_2:
-             FP = fopen("/usr/local/etc/answerkeys/text2", "r");
+             FP = fopen(path_answerkeys_text2, "r");
              fgets(key, 40000, FP);
              fclose(FP);
              SDL_DestroyWindow(slate);
@@ -5872,7 +5757,7 @@ select_book()
              break;
                   
              case SDLK_3:
-             FP = fopen("/usr/local/etc/answerkeys/text3", "r");
+             FP = fopen(path_answerkeys_text3, "r");
              fgets(key, 40000, FP);
              fclose(FP);
              SDL_DestroyWindow(slate);
@@ -5880,7 +5765,7 @@ select_book()
              break;
                   
              case SDLK_4:
-             FP = fopen("/usr/local/etc/answerkeys/text4", "r");
+             FP = fopen(path_answerkeys_text4, "r");
              fgets(key, 40000, FP);
              fclose(FP);
              SDL_DestroyWindow(slate);

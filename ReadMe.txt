@@ -17,6 +17,52 @@ Install VeraMono font:
 		Select "File" menu -> "Install New Font..." menu option from "Fonts" window
 		Browse to <install_location>/desknet_win/Release/ in the "Add Fonts" dialogue
 		Select "Bitstream Vera Sans Mono (TrueType)" and press "OK" button
+Install data files:
+	Windows 7:
+		Files will generally go in "C:\Users\<user_name>\Documents\Desknet\" where:
+			<user_name> is the user name for the currenly logged in user.
+		Note that the "Documents" directory location is customizable in Windows and
+		what is listed above is the default location.
+	Windows XP:
+		Files will generally go in "C:\Users\<user_name>\Documents\Desknet\" where:
+			<user_name> is the user name for the currenly logged in user.
+		Note that the "Documents" directory location is customizable in Windows and
+		what is listed above is the default location.
+	Directory structure under Desknet:
+
+		Desknet -
+			 |-Answerkeys-
+			 |	      |-text1
+			 |	      |-text2
+			 |	      |-text3
+			 |	      |-text4
+			 |
+			 |-Class1-
+			 |	  |-Files-
+			 |	  |	  |-filea
+			 |	  |	  .
+			 |	  |	  .
+			 |	  |	  .
+			 |	  |	  |-filez
+			 |	  |
+			 |	  |-Names
+			 |	  |	  |-namea
+			 |	  |	  .
+			 |	  |	  .
+			 |	  |	  .
+			 |	  |	  |-namez
+			 |	  |	  |-teacher
+			 .	  |
+			 .	  |-Settings-
+			 .		     |-addpoints
+			 |-Class9-	     |-divpoints
+			 |	  |	     |-mulpoints
+			 |    (Like Class1)  |-subpoints
+			 |		     |-terma
+			 |-net_size	     |-termb
+			 |-pass		     |-type_line
+					     |-win_score
+				
 Double click dnet.exe in <install_location>/desknet_win/Release folder to launch DeskNet
 
 ==================
@@ -92,7 +138,7 @@ Compile Flags for freetype
 Build Compile Command
 ---------------------
 	Based on output from previous two sections I ended up with the following command:
-		gcc -o ../build/dnet.exe dnet.c -Wall -D _WIN -I/usr/include/SDL2 -Dmain=SDL_main -I/usr/local/include/freetype2 -I/usr/local/include -L/usr/lib -L/usr/local/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -lfreetype -lSDL2_ttf -lws2_32 -Wl,-Bstatic -static-libgcc
+		gcc -o ../build/dnet.exe dnet.c -Wall -D _WIN -I/usr/include/SDL2 -Dmain=SDL_main -I/usr/local/include/freetype2 -I/usr/local/include -L/usr/lib -L/usr/local/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -lfreetype -lSDL2_ttf -lws2_32 -Wl,-Bstatic -static-libgcc -O3
 	-Wl,-Bstatic is intended to include dll dependencies in the .exe file
 		I haven't figured out how to get this to work for SDL2.dll, SDL2_ttf.dll, and libfreetype-6.dll yet, but in theory it should work.
 	-static-libgcc includes the libgcc_s_dw2-1.dll dependency in the dnet.exe file
