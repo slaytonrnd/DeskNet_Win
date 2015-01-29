@@ -3970,6 +3970,9 @@ main(int ARGC, char *ARGV[])
       get_file();
 
       get_names();
+      
+// TODO: Make this work in Windows.
+#ifndef _WIN
       get_config();
       
       if (op == 0)
@@ -3977,6 +3980,7 @@ main(int ARGC, char *ARGV[])
           opener();
           op = 1;
         }
+#endif
 
       splash_page();
       while (1)
